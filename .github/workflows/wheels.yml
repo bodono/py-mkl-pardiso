@@ -19,49 +19,72 @@ jobs:
           name: sdist
           path: dist/*.tar.gz
 
-  build-wheels:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            cibw_archs: x86_64
-          - os: windows-latest
-            cibw_archs: AMD64
-
-    runs-on: ${{ matrix.os }}
-
+  build-wheels-linux:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.21
         env:
-          CIBW_ARCHS: ${{ matrix.cibw_archs }}
+          CIBW_ARCHS: x86_64
           CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-* cp314-*"
           CIBW_SKIP: "pp* *-musllinux*"
 
-          # Install MKL static libs + headers via pip before each build.
-          # mkl-static provides true static archives so MKL is embedded in
-          # the wheel — users don't need MKL installed at runtime.
-          CIBW_BEFORE_BUILD: pip install mkl-static mkl-include
+          # Install Miniforge once, then use it to install MKL into a
+          # known prefix. Static linking embeds MKL into the wheel.
+          CIBW_BEFORE_ALL_LINUX: >
+            curl -fsSL https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh -o /tmp/miniforge.sh &&
+            bash /tmp/miniforge.sh -b -p /opt/mkl &&
+            /opt/mkl/bin/conda install -y -p /opt/mkl mkl-devel
 
-          # Linux: force static linking via full .a archive paths.
-          CIBW_ENVIRONMENT_LINUX: PYMKLPARDISO_STATIC=1
-
-          # Windows: MSVC automatically static-links the .lib files from
-          # mkl-static (they are real static libs, not import libs).
+          CIBW_ENVIRONMENT_LINUX: >
+            MKLROOT=/opt/mkl
+            PYMKLPARDISO_STATIC=1
 
           CIBW_TEST_REQUIRES: pytest
           CIBW_TEST_COMMAND: pytest {project}/tests -v
 
       - uses: actions/upload-artifact@v4
         with:
-          name: wheels-${{ matrix.os }}-${{ matrix.cibw_archs }}
+          name: wheels-linux
+          path: wheelhouse/*.whl
+
+  build-wheels-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Conda
+        uses: conda-forge/setup-miniconda@v2
+        with:
+          activate-environment: build
+          channels: conda-forge,defaults
+
+      - name: Install MKL
+        shell: bash -el {0}
+        run: conda install -y mkl-devel mkl-static
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.21
+        env:
+          CIBW_ARCHS: AMD64
+          CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-* cp314-*"
+          CIBW_SKIP: "pp*"
+
+          CIBW_ENVIRONMENT_WINDOWS: >
+            MKLROOT=$CONDA_PREFIX
+
+          CIBW_TEST_REQUIRES: pytest
+          CIBW_TEST_COMMAND: pytest {project}/tests -v
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-windows
           path: wheelhouse/*.whl
 
   publish:
-    needs: [build-sdist, build-wheels]
+    needs: [build-sdist, build-wheels-linux, build-wheels-windows]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:

@@ -5,45 +5,26 @@ from pybind11.setup_helpers import Pybind11Extension, build_ext
 from setuptools import setup
 
 
-def _find_mkl_via_pip():
-    """Try to locate MKL headers and libraries from pip-installed packages."""
-    try:
-        import mkl_include
-        inc = mkl_include.get_include()
-    except (ImportError, AttributeError):
-        return None
-
-    if not os.path.isfile(os.path.join(inc, "mkl.h")):
-        return None
-
-    # mkl-static is preferred (for self-contained wheels), then mkl-devel, then mkl.
-    for pkg_name in ("mkl_static", "mkl_devel", "mkl"):
-        try:
-            mod = __import__(pkg_name)
-            lib = os.path.join(os.path.dirname(mod.__file__), "lib")
-            if os.path.isdir(lib):
-                return inc, lib
-        except ImportError:
-            continue
-
-    return None
-
-
 def find_mkl():
-    """Find MKL include and library directories."""
+    """Find MKL include and library directories.
+
+    Search order:
+      1. MKLROOT environment variable
+      2. CONDA_PREFIX environment variable
+      3. Standard Intel oneAPI paths
+      4. System-installed MKL (apt libmkl-dev on Ubuntu/Debian)
+    """
+    # Candidate base directories (MKLROOT-style layout: include/, lib/).
     candidates = []
 
-    # 1. MKLROOT environment variable (Intel oneAPI / standalone MKL)
     mklroot = os.environ.get("MKLROOT")
     if mklroot:
         candidates.append(mklroot)
 
-    # 2. CONDA_PREFIX (conda-installed MKL)
     conda = os.environ.get("CONDA_PREFIX")
     if conda:
         candidates.append(conda)
 
-    # 3. Standard Intel oneAPI paths
     if sys.platform == "linux":
         candidates.append("/opt/intel/oneapi/mkl/latest")
     elif sys.platform == "win32":
@@ -61,25 +42,15 @@ def find_mkl():
         if os.path.isfile(os.path.join(inc, "mkl.h")):
             return inc, lib
 
-    # 4. System-installed MKL (e.g. apt-get install libmkl-dev on Ubuntu/Debian)
+    # Ubuntu/Debian: apt-get install libmkl-dev
     if sys.platform == "linux":
-        _sys_pairs = [
-            ("/usr/include/mkl", "/usr/lib/x86_64-linux-gnu"),
-            ("/usr/include", "/usr/lib/x86_64-linux-gnu"),
-        ]
-        for inc, lib in _sys_pairs:
+        for inc in ("/usr/include/mkl", "/usr/include"):
             if os.path.isfile(os.path.join(inc, "mkl.h")):
-                return inc, lib
-
-    # 5. Fallback: pip-installed MKL packages (mkl-include + mkl-static/mkl-devel)
-    pip_result = _find_mkl_via_pip()
-    if pip_result is not None:
-        return pip_result
+                return inc, "/usr/lib/x86_64-linux-gnu"
 
     raise RuntimeError(
         "Could not find MKL. Set the MKLROOT environment variable to your "
-        "MKL installation (e.g. /opt/intel/oneapi/mkl/latest), or "
-        "pip install mkl-include mkl-static."
+        "MKL installation, or install via conda: conda install mkl-devel"
     )
 
 
@@ -93,8 +64,6 @@ define_macros = [("MKL_ILP64", None)]
 static = os.environ.get("PYMKLPARDISO_STATIC", "").lower() in ("1", "true", "yes")
 
 if sys.platform == "win32":
-    # On Windows, the .lib files from mkl-static are true static libraries.
-    # MSVC links them in directly — no DLLs needed at runtime.
     libraries = ["mkl_intel_ilp64", "mkl_sequential", "mkl_core"]
     extra_link_args = []
 elif static:

@@ -7,54 +7,35 @@ on:
     branches: [main]
 
 jobs:
-  test-linux:
+  test:
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest]
         python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash -el {0}
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python }}
-        uses: actions/setup-python@v5
+      - name: Set up Conda
+        uses: conda-forge/setup-miniconda@v2
         with:
           python-version: ${{ matrix.python }}
+          activate-environment: test
+          channels: conda-forge,defaults
 
       - name: Install MKL
+        run: conda install -y mkl-devel
+
+      - name: Install package
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libmkl-dev
-
-      - name: Install package
-        run: pip install -e ".[test]"
-
-      - name: Run tests
-        run: pytest -v tests/
-
-  test-windows:
-    strategy:
-      fail-fast: false
-      matrix:
-        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
-
-    runs-on: windows-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-
-      - name: Install MKL and build deps
-        run: pip install mkl-devel mkl-include setuptools pybind11
-
-      - name: Install package
-        run: pip install --no-build-isolation -e ".[test]"
+          export MKLROOT=$CONDA_PREFIX
+          pip install -e ".[test]"
 
       - name: Run tests
         run: pytest -v tests/
