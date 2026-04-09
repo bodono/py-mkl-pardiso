@@ -5,6 +5,30 @@ from pybind11.setup_helpers import Pybind11Extension, build_ext
 from setuptools import setup
 
 
+def _find_mkl_via_pip():
+    """Try to locate MKL headers and libraries from pip-installed packages."""
+    try:
+        import mkl_include
+        inc = mkl_include.get_include()
+    except (ImportError, AttributeError):
+        return None
+
+    if not os.path.isfile(os.path.join(inc, "mkl.h")):
+        return None
+
+    # mkl-devel / mkl-static put libraries alongside the package.
+    for pkg_name in ("mkl_devel", "mkl_static", "mkl"):
+        try:
+            mod = __import__(pkg_name)
+            lib = os.path.join(os.path.dirname(mod.__file__), "lib")
+            if os.path.isdir(lib):
+                return inc, lib
+        except ImportError:
+            continue
+
+    return None
+
+
 def find_mkl():
     """Find MKL include and library directories."""
     candidates = []
@@ -37,9 +61,15 @@ def find_mkl():
         if os.path.isfile(os.path.join(inc, "mkl.h")):
             return inc, lib
 
+    # 4. Fallback: pip-installed MKL packages (mkl-include + mkl-devel/mkl-static)
+    pip_result = _find_mkl_via_pip()
+    if pip_result is not None:
+        return pip_result
+
     raise RuntimeError(
         "Could not find MKL. Set the MKLROOT environment variable to your "
-        "MKL installation (e.g. /opt/intel/oneapi/mkl/latest)."
+        "MKL installation (e.g. /opt/intel/oneapi/mkl/latest), or "
+        "pip install mkl-include mkl-devel."
     )
 
 
