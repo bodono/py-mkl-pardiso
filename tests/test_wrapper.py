@@ -183,7 +183,7 @@ class TestRefactor:
             npt.assert_allclose(A_mod @ x, b, atol=1e-12)
 
     def test_refactor_only_phase_22(self, A4):
-        """Refactor should raise when values invalidate symbolic analysis."""
+        """Refactor should keep working when only numeric values change."""
         A_full = np.array([
             [4.0, 1.0, 0.0],
             [1.0, -3.0, 2.0],
@@ -208,8 +208,11 @@ class TestRefactor:
         ])
         A2_upper = sp.csr_matrix(np.triu(A2_full))
         A2_upper.sort_indices()
-        with pytest.raises(RuntimeError, match="call factor"):
-            solver.refactor(A2_upper.data.astype(np.float64))
+        solver.refactor(A2_upper.data.astype(np.float64))
+
+        b = np.array([1.0, 2.0, 3.0])
+        x = solver.solve(b)
+        npt.assert_allclose(A2_full @ x, b, atol=1e-12)
 
     def test_refactor_requires_reanalysis_after_release(self, A4):
         _, A_upper = A4
