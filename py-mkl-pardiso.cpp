@@ -1,4 +1,4 @@
-// pardiso_pybind.cpp
+// py-mkl-pardiso.cpp
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -84,6 +84,12 @@ public:
           values_set_(false),
           analyzed_(false),
           factored_(false) {
+        if (mtype != 1 && mtype != 2 && mtype != -2 && mtype != 11) {
+            throw_value_error(
+                "mtype must be one of: 1 (structurally symmetric), "
+                "2 (symmetric positive definite), -2 (symmetric indefinite), "
+                "11 (nonsymmetric)");
+        }
         init_pardiso_state();
     }
 
@@ -101,6 +107,7 @@ public:
     }
 
     Index n() const { return n_; }
+    Index nnz() const { return static_cast<Index>(a_.size()); }
     Index mtype() const { return mtype_; }
 
     std::vector<Index> get_iparm() const {
@@ -290,7 +297,7 @@ public:
             }
 
             auto b_c = py::array_t<double, py::array::c_style | py::array::forcecast>(b);
-            py::array_t<double> x({n_});
+            py::array_t<double> x({static_cast<py::ssize_t>(n_)});
             auto bbuf = b_c.request();
             auto xbuf = x.request();
 
@@ -412,11 +419,7 @@ public:
         double ddum = 0.0;
         Index error = 0;
 
-        std::vector<Index> perm_buf;
-        if (perm_.empty() && n_ > 0) {
-            perm_buf.resize(static_cast<std::size_t>(n_), 0);
-        }
-        Index* p_ptr = perm_.empty() ? perm_buf.data() : perm_.data();
+        Index* p_ptr = ensure_perm_buffer();
 
         {
             py::gil_scoped_release nogil;
@@ -464,6 +467,7 @@ private:
         ja_.clear();
         a_.clear();
         perm_.clear();
+        perm_buf_.clear();
         n_ = 0;
         pattern_set_ = false;
         values_set_ = false;
@@ -502,6 +506,16 @@ private:
         }
     }
 
+    Index* ensure_perm_buffer() {
+        if (!perm_.empty()) {
+            return perm_.data();
+        }
+        if (n_ > 0) {
+            perm_buf_.resize(static_cast<std::size_t>(n_), 0);
+        }
+        return perm_buf_.data();
+    }
+
     static void ensure_contiguous(const py::array& arr, const char* name) {
         if ((arr.flags() & (py::array::c_style | py::array::f_style)) == 0) {
             throw_value_error(std::string(name) + " must be contiguous");
@@ -525,10 +539,12 @@ private:
             return;
         }
 
-        // Some parameters are documented as phase-1 / handle-sensitive.
-        const bool phase1_sensitive = (idx == 27) || (idx == 33);
-
-        if (phase1_sensitive && owns_handle()) {
+        // Many iparm entries affect symbolic analysis (e.g., iparm[1]
+        // reordering, iparm[3] preconditioned CGS, iparm[9] pivoting,
+        // iparm[27] single/double precision, iparm[33] CNR mode, etc.).
+        // Conservatively release the handle on any change to avoid stale
+        // analysis results.
+        if (analyzed_ && owns_handle()) {
             release();
         }
     }
@@ -617,11 +633,7 @@ private:
 
         // PARDISO writes the fill-in reducing permutation (size n) to perm
         // during phase 11, so we must always provide a properly-sized buffer.
-        std::vector<Index> perm_buf;
-        if (perm_.empty() && n_ > 0) {
-            perm_buf.resize(static_cast<std::size_t>(n_), 0);
-        }
-        Index* p_ptr = perm_.empty() ? perm_buf.data() : perm_.data();
+        Index* p_ptr = ensure_perm_buffer();
 
         {
             py::gil_scoped_release nogil;
@@ -671,6 +683,7 @@ private:
     std::vector<Index> ja_;
     std::vector<double> a_;
     std::vector<Index> perm_;
+    std::vector<Index> perm_buf_;  // Reusable buffer for PARDISO perm when user hasn't set one.
 };
 
 PYBIND11_MODULE(_mkl_pardiso, m) {
@@ -684,6 +697,7 @@ PYBIND11_MODULE(_mkl_pardiso, m) {
         .def("reset", &PardisoSolver::reset)
 
         .def("n", &PardisoSolver::n)
+        .def("nnz", &PardisoSolver::nnz)
         .def("mtype", &PardisoSolver::mtype)
 
         .def("get_iparm", &PardisoSolver::get_iparm)
@@ -727,7 +741,7 @@ Useful after set_values(a) when the sparsity pattern is unchanged.
         .def("run_phase", &PardisoSolver::run_phase, py::arg("phase"),
              R"doc(
 Run a PARDISO phase that does not require explicit RHS/output arrays.
-For phase -1, use release().
+Phase -1 is accepted and delegates to release().
 )doc")
         .def("run_phase_into", &PardisoSolver::run_phase_into,
              py::arg("phase"), py::arg("b"), py::arg("x"),

@@ -1361,3 +1361,180 @@ class TestLifecycle:
         npt.assert_allclose(A2_full @ x2, b, atol=1e-12)
         # Solutions should be different
         assert not np.allclose(x1, x2)
+
+
+# ---------------------------------------------------------------------------
+# Constructor validation
+# ---------------------------------------------------------------------------
+
+class TestConstructorValidation:
+    def test_invalid_mtype_rejected(self):
+        with pytest.raises(ValueError, match="mtype"):
+            pymklpardiso.PardisoSolver(999)
+
+    def test_invalid_mtype_zero_rejected(self):
+        with pytest.raises(ValueError, match="mtype"):
+            pymklpardiso.PardisoSolver(0)
+
+    def test_valid_mtype_posdef(self):
+        solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_POSDEF)
+        assert solver.mtype() == 2
+
+    def test_valid_mtype_indef(self):
+        solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_INDEF)
+        assert solver.mtype() == -2
+
+    def test_valid_mtype_struct_sym(self):
+        solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_STRUCT_SYM)
+        assert solver.mtype() == 1
+
+    def test_valid_mtype_nonsym(self):
+        solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_NONSYM)
+        assert solver.mtype() == 11
+
+
+# ---------------------------------------------------------------------------
+# nnz accessor
+# ---------------------------------------------------------------------------
+
+class TestNnzAccessor:
+    def test_nnz_before_pattern(self):
+        solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_POSDEF)
+        assert solver.nnz() == 0
+
+    def test_nnz_after_pattern(self, A4):
+        _, A_upper = A4
+        solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_POSDEF)
+        M = _set_pattern_from_csr(solver, A_upper)
+        assert solver.nnz() == M.nnz
+
+    def test_nnz_after_reset(self, A4):
+        _, A_upper = A4
+        solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_POSDEF)
+        _set_pattern_from_csr(solver, A_upper)
+        solver.reset()
+        assert solver.nnz() == 0
+
+    def test_nnz_diagonal(self):
+        """Diagonal matrix: nnz == n."""
+        n = 5
+        A = sp.diags(np.ones(n), format="csr")
+        solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_POSDEF)
+        _set_pattern_from_csr(solver, A)
+        assert solver.nnz() == n
+
+
+# ---------------------------------------------------------------------------
+# Non-contiguous array inputs
+# ---------------------------------------------------------------------------
+
+class TestNonContiguous:
+    def test_solve_with_strided_1d_rhs(self, solver4, A4):
+        """Strided (non-contiguous) 1D array should work via forcecast."""
+        A_full, _ = A4
+        arr = np.array([1.0, 99.0, 2.0, 99.0, 3.0, 99.0, 4.0, 99.0])
+        b = arr[::2]  # non-contiguous: [1, 2, 3, 4]
+        assert not b.flags["C_CONTIGUOUS"]
+        x = solver4.solve(b)
+        npt.assert_allclose(A_full @ x, b, atol=1e-12)
+
+    def test_solve_into_with_contiguous_arrays(self, solver4, A4):
+        """Contiguous 1D arrays in solve_into should work."""
+        A_full, _ = A4
+        b = np.array([1.0, 2.0, 3.0, 4.0])
+        x = np.zeros(4)
+        solver4.solve_into(b, x)
+        npt.assert_allclose(A_full @ x, b, atol=1e-12)
+
+    def test_factor_with_strided_values(self, A4):
+        """Strided (non-contiguous) values array should work via forcecast."""
+        A_full, A_upper = A4
+        # Create a non-contiguous view of the data
+        padded = np.zeros(A_upper.nnz * 2)
+        padded[::2] = A_upper.data.astype(np.float64)
+        vals = padded[::2]
+        assert not vals.flags["C_CONTIGUOUS"]
+
+        solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_POSDEF)
+        _set_pattern_from_csr(solver, A_upper)
+        solver.factor(vals)
+
+        b = np.array([1.0, 2.0, 3.0, 4.0])
+        x = solver.solve(b)
+        npt.assert_allclose(A_full @ x, b, atol=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# iparm persistence through factor/solve
+# ---------------------------------------------------------------------------
+
+class TestIparmPersistence:
+    def test_iparm_value_persists_through_factor_solve(self, A4):
+        """iparm values set before factor should persist after solve."""
+        _, A_upper = A4
+        solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_POSDEF)
+        _set_pattern_from_csr(solver, A_upper)
+
+        # Set iparm[7] (iterative refinement steps) before factoring
+        solver.set_iparm(7, 2)
+        solver.factor(A_upper.data.astype(np.float64))
+
+        b = np.array([1.0, 2.0, 3.0, 4.0])
+        solver.solve(b)
+
+        # Value should still be set
+        assert solver.get_iparm_value(7) == 2
+
+    def test_iparm_all_persists_through_factor_solve(self, A4):
+        """set_iparm_all values should persist through factor and solve."""
+        _, A_upper = A4
+        solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_POSDEF)
+        _set_pattern_from_csr(solver, A_upper)
+
+        iparm = np.zeros(64, dtype=np.int64)
+        iparm[0] = 1
+        iparm[34] = 1
+        iparm[7] = 3
+        iparm[5] = 1  # write solution into b
+        solver.set_iparm_all(iparm)
+
+        solver.factor(A_upper.data.astype(np.float64))
+        assert solver.get_iparm_value(7) == 3
+
+
+# ---------------------------------------------------------------------------
+# iparm handle invalidation
+# ---------------------------------------------------------------------------
+
+class TestIparmInvalidation:
+    def test_iparm_change_invalidates_handle(self, A4):
+        """Changing an iparm value after analysis should invalidate and re-analyze."""
+        A_full, A_upper = A4
+        solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_POSDEF)
+        _set_pattern_from_csr(solver, A_upper)
+        solver.factor(A_upper.data.astype(np.float64))
+
+        # Change iparm[7] (iterative refinement) — should trigger re-analysis
+        solver.set_iparm(7, 2)
+
+        # Re-factor and solve should still produce correct results
+        solver.set_values(A_upper.data.astype(np.float64))
+        solver.refactor()
+        b = np.array([1.0, 2.0, 3.0, 4.0])
+        x = solver.solve(b)
+        npt.assert_allclose(A_full @ x, b, atol=1e-12)
+
+    def test_iparm_same_value_no_invalidation(self, A4):
+        """Setting iparm to its current value should not invalidate."""
+        _, A_upper = A4
+        solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_POSDEF)
+        _set_pattern_from_csr(solver, A_upper)
+        solver.factor(A_upper.data.astype(np.float64))
+
+        # Set iparm[7] to its current value (0) — no invalidation
+        solver.set_iparm(7, 0)
+
+        # Should still be factored — solve should work immediately
+        b = np.array([1.0, 2.0, 3.0, 4.0])
+        x = solver.solve(b)
+        assert x.shape == (4,)

@@ -53,7 +53,7 @@ solver.set_pattern(
     ja=A_upper.indices.astype(np.int64),
     n=A_upper.shape[0],
 )
-solver.factor(A_upper.data)
+solver.factor(A_upper.data.astype(np.float64))
 
 b = np.array([1.0, 2.0])
 x = solver.solve(b)
@@ -84,8 +84,10 @@ Create a PARDISO solver instance.
 
 **`solver.set_pattern(ia, ja, n, check_sorted=True)`**
 Set the CSR sparsity pattern. Uses zero-based indexing. Column indices must
-be sorted within each row (unless `check_sorted=False`). For symmetric types,
-pass only the upper triangle.
+be sorted within each row (unless `check_sorted=False`). For symmetric
+positive definite and symmetric indefinite types, pass only the upper
+triangle. For structurally symmetric and nonsymmetric types, pass the full
+matrix.
 
 **`solver.factor(a)`**
 Set the nonzero values of the CSR matrix (i.e., `A_csr.data`) and factorize.
@@ -124,6 +126,7 @@ for new_values in value_generator:
 | `solver.release()` | Free PARDISO internal memory. |
 | `solver.reset()` | Release and clear all state. |
 | `solver.n()` | Matrix dimension. |
+| `solver.nnz()` | Number of nonzeros in the sparsity pattern. |
 | `solver.mtype()` | Matrix type. |
 | `solver.set_perm(perm)` | Set fill-reducing permutation. |
 | `solver.clear_perm()` | Clear permutation. |
