@@ -395,6 +395,96 @@ class TestQtqpWorkflow:
             x = solver.solve(b)
             npt.assert_allclose(A2_full @ x, b, atol=1e-6)
 
+    def test_full_matrix_construction(self):
+        """Passing a full symmetric matrix (both triangles) should work."""
+        A_full = np.array([
+            [4.0, 1.0, 0.0],
+            [1.0, -3.0, 2.0],
+            [0.0, 2.0, 5.0],
+        ])
+        # Pass the FULL symmetric matrix (not just upper triangle)
+        A_csr = sp.csr_matrix(A_full)
+        A_csr.sort_indices()
+
+        solver = PardisoSolver(
+            A_csr, MTYPE_REAL_SYM_INDEF,
+            iparms={9: 8, 23: 1},
+        )
+        b = np.array([1.0, 2.0, 3.0])
+        x = solver.solve(b)
+        npt.assert_allclose(A_full @ x, b, atol=1e-6)
+
+    def test_full_matrix_refactor(self):
+        """refactor() with full-matrix data should extract upper triangle."""
+        A_full = np.array([
+            [4.0, 1.0, 0.0],
+            [1.0, -3.0, 2.0],
+            [0.0, 2.0, 5.0],
+        ])
+        A_csr = sp.csr_matrix(A_full)
+        A_csr.sort_indices()
+
+        solver = PardisoSolver(
+            A_csr, MTYPE_REAL_SYM_INDEF,
+            iparms={9: 8, 23: 1},
+        )
+
+        # Refactor with full-matrix data
+        A2_full = A_full.copy()
+        A2_full[0, 0] += 1.0
+        A2_full[2, 2] += 1.0
+        A2_csr = sp.csr_matrix(A2_full)
+        A2_csr.sort_indices()
+        solver.refactor(A2_csr.data.astype(np.float64))
+
+        b = np.array([1.0, 2.0, 3.0])
+        x = solver.solve(b)
+        npt.assert_allclose(A2_full @ x, b, atol=1e-6)
+
+    def test_full_matrix_factor_error_recovery(self):
+        """factor() with full-matrix data for error recovery."""
+        A_full = np.array([
+            [4.0, 1.0, 0.0],
+            [1.0, -3.0, 2.0],
+            [0.0, 2.0, 5.0],
+        ])
+        A_csr = sp.csr_matrix(A_full)
+        A_csr.sort_indices()
+
+        solver = PardisoSolver(
+            A_csr, MTYPE_REAL_SYM_INDEF,
+            iparms={9: 8, 23: 1},
+        )
+
+        # Error recovery: set scaling/matching and re-factor with full data
+        solver.set_iparm(10, 1)
+        solver.set_iparm(12, 1)
+        A2_full = A_full.copy()
+        A2_full[1, 1] = -5.0
+        A2_csr = sp.csr_matrix(A2_full)
+        A2_csr.sort_indices()
+        solver.factor(A2_csr.data.astype(np.float64))
+
+        b = np.array([1.0, 2.0, 3.0])
+        x = solver.solve(b)
+        npt.assert_allclose(A2_full @ x, b, atol=1e-6)
+
+    def test_full_spd_matrix(self):
+        """Full SPD matrix (both triangles) should work."""
+        A_full = np.array([
+            [10.0, 1.0, 0.0, 0.0],
+            [1.0, 8.0, 2.0, 0.0],
+            [0.0, 2.0, 12.0, 1.0],
+            [0.0, 0.0, 1.0, 6.0],
+        ])
+        A_csr = sp.csr_matrix(A_full)
+        A_csr.sort_indices()
+
+        solver = PardisoSolver(A_csr, MTYPE_REAL_SYM_POSDEF)
+        b = np.array([1.0, 2.0, 3.0, 4.0])
+        x = solver.solve(b)
+        npt.assert_allclose(A_full @ x, b, atol=1e-12)
+
     def test_factor_for_error_recovery(self):
         """factor() can be used for error recovery (re-analyzes from scratch)."""
         A_full = np.array([

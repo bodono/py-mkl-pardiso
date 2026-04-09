@@ -76,7 +76,7 @@ pattern from `A`, applies any `iparms` overrides, and runs symbolic analysis
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `A` | sparse CSR | *(required)* | Sparse matrix (any object with `indptr`, `indices`, `data`, `shape`). For symmetric types, pass only the upper triangle. |
+| `A` | sparse CSR | *(required)* | Sparse matrix (any object with `indptr`, `indices`, `data`, `shape`). For symmetric types, the upper triangle is extracted automatically — you may pass either the full matrix or just the upper triangle. |
 | `mtype` | `int` | *(required)* | Matrix type (see constants below). |
 | `iparms` | `dict` | `None` | Optional `{index: value}` iparm overrides. |
 | `msglvl` | `int` | `0` | Message level (0 = silent, 1 = print statistics). |
@@ -102,11 +102,13 @@ Solve `Ax = b` writing into pre-allocated `x`. For 2D arrays, both `b` and
 
 **`solver.refactor(values)`**
 Re-factorize with new nonzero values (phase 22 only). Does not re-run
-symbolic analysis. Use `factor()` to re-analyze from scratch.
+symbolic analysis. Use `factor()` to re-analyze from scratch. For symmetric
+types, accepts either full-matrix or upper-triangle data.
 
 **`solver.factor(values)`**
 Re-analyze and re-factorize with new values (phases 11 + 22). Use this for
-error recovery or when iparm changes require fresh symbolic analysis.
+error recovery or when iparm changes require fresh symbolic analysis. For
+symmetric types, accepts either full-matrix or upper-triangle data.
 
 ### Other methods
 

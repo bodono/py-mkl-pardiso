@@ -10,6 +10,8 @@ from pymklpardiso._mkl_pardiso import (
 )
 from pymklpardiso._mkl_pardiso import PardisoSolver as _PardisoSolver
 
+_SYMMETRIC_MTYPES = (MTYPE_REAL_SYM_POSDEF, MTYPE_REAL_SYM_INDEF)
+
 
 class PardisoSolver:
     """PARDISO sparse direct solver.
@@ -17,25 +19,46 @@ class PardisoSolver:
     Args:
         A: Sparse matrix in CSR format (any object with indptr, indices, data,
             shape attributes, e.g. scipy.sparse.csr_matrix). For symmetric
-            types (SPD, symmetric indefinite), pass only the upper triangle.
-            For structurally symmetric and nonsymmetric types, pass the full
-            matrix.
+            types (SPD, symmetric indefinite), the upper triangle is extracted
+            automatically — you may pass either the full matrix or just the
+            upper triangle. For structurally symmetric and nonsymmetric types,
+            pass the full matrix.
         mtype: Matrix type constant (MTYPE_REAL_SYM_POSDEF, etc.).
         iparms: Optional dict of {index: value} iparm overrides.
         msglvl: Message level (0 = silent, 1 = print statistics).
     """
 
     def __init__(self, A, mtype, iparms=None, msglvl=0):
+        indptr = np.asarray(A.indptr, dtype=np.int64)
+        indices = np.asarray(A.indices, dtype=np.int64)
+        data = np.asarray(A.data, dtype=np.float64)
+        n = A.shape[0]
+
+        if mtype in _SYMMETRIC_MTYPES:
+            # PARDISO expects only the upper triangle for symmetric types.
+            # Extract it automatically so callers can pass full matrices.
+            rows = np.repeat(np.arange(n, dtype=np.intp), np.diff(indptr))
+            mask = np.where(indices >= rows)[0]
+            self._triu_mask = mask
+            self._full_nnz = len(data)
+            triu_indices = indices[mask]
+            triu_data = data[mask]
+            upper_rows = rows[mask]
+            counts = np.bincount(upper_rows, minlength=n).astype(np.int64)
+            triu_indptr = np.empty(n + 1, dtype=np.int64)
+            triu_indptr[0] = 0
+            np.cumsum(counts, out=triu_indptr[1:])
+            indptr, indices, data = triu_indptr, triu_indices, triu_data
+        else:
+            self._triu_mask = None
+            self._full_nnz = None
+
         self._solver = _PardisoSolver(mtype, msglvl)
         if iparms:
             for idx, val in iparms.items():
                 self._solver.set_iparm(idx, val)
-        self._solver.set_pattern(
-            ia=np.asarray(A.indptr, dtype=np.int64),
-            ja=np.asarray(A.indices, dtype=np.int64),
-            n=A.shape[0],
-        )
-        self._solver.factor(np.asarray(A.data, dtype=np.float64))
+        self._solver.set_pattern(ia=indptr, ja=indices, n=n)
+        self._solver.factor(data)
 
     def solve(self, b):
         """Solve Ax = b. Accepts 1D (n,) or 2D (n, nrhs) arrays."""
@@ -45,21 +68,32 @@ class PardisoSolver:
         """Solve Ax = b writing into pre-allocated x."""
         self._solver.solve_into(b, x)
 
+    def _extract_triu_values(self, values):
+        """Extract upper-triangle values if symmetric and full data is passed."""
+        values = np.asarray(values, dtype=np.float64)
+        if self._triu_mask is not None and len(values) == self._full_nnz:
+            values = values[self._triu_mask]
+        return values
+
     def refactor(self, values):
         """Re-factorize with new values (same sparsity pattern).
 
         Runs only numeric factorization (phase 22). Does not re-run symbolic
         analysis. Use factor() to re-analyze from scratch.
+
+        For symmetric types, accepts either full-matrix or upper-triangle data.
         """
-        self._solver.refactor_values(values)
+        self._solver.refactor_values(self._extract_triu_values(values))
 
     def factor(self, values):
         """Re-analyze and re-factorize with new values (phases 11 + 22).
 
         Use this for error recovery or when iparm changes require fresh
         symbolic analysis. For normal refactoring, use refactor().
+
+        For symmetric types, accepts either full-matrix or upper-triangle data.
         """
-        self._solver.factor(values)
+        self._solver.factor(self._extract_triu_values(values))
 
     # -- iparm access --
 
