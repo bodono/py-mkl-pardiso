@@ -281,7 +281,7 @@ public:
         factor_loaded_values();
     }
 
-    py::array_t<double> solve(py::array_t<double, py::array::c_style | py::array::forcecast> b) {
+    py::array_t<double> solve(py::array_t<double, py::array::forcecast> b) {
         ensure_factored();
 
         if (b.ndim() == 1) {
@@ -289,8 +289,9 @@ public:
                 throw_value_error("1D rhs must have length n");
             }
 
+            auto b_c = py::array_t<double, py::array::c_style | py::array::forcecast>(b);
             py::array_t<double> x({n_});
-            auto bbuf = b.request();
+            auto bbuf = b_c.request();
             auto xbuf = x.request();
 
             call_pardiso(/*phase=*/33, /*nrhs=*/1,
@@ -305,8 +306,20 @@ public:
             }
 
             const Index nrhs = static_cast<Index>(b.shape(1));
-            py::array_t<double> x({n_, nrhs});
-            auto bbuf = b.request();
+
+            // PARDISO expects column-major (Fortran) layout for multi-RHS.
+            auto b_f = py::array_t<double, py::array::f_style | py::array::forcecast>(b);
+
+            // Create Fortran-contiguous output array.
+            const py::ssize_t n_s = static_cast<py::ssize_t>(n_);
+            const py::ssize_t nrhs_s = static_cast<py::ssize_t>(nrhs);
+            const py::ssize_t dsize = static_cast<py::ssize_t>(sizeof(double));
+            py::array_t<double> x(
+                std::vector<py::ssize_t>{n_s, nrhs_s},
+                std::vector<py::ssize_t>{dsize, n_s * dsize}
+            );
+
+            auto bbuf = b_f.request();
             auto xbuf = x.request();
 
             call_pardiso(/*phase=*/33, nrhs,
@@ -319,12 +332,22 @@ public:
     }
 
     void solve_into(
-        py::array_t<double, py::array::c_style | py::array::forcecast> b,
-        py::array_t<double, py::array::c_style | py::array::forcecast> x
+        py::array_t<double, py::array::forcecast> b,
+        py::array_t<double, py::array::forcecast> x
     ) {
         ensure_factored();
 
         const Index nrhs = validate_rhs_pair(b, x);
+
+        // For multi-RHS, PARDISO expects column-major layout.
+        if (b.ndim() == 2) {
+            ensure_f_contiguous(b, "b");
+            ensure_f_contiguous(x, "x");
+        } else {
+            ensure_contiguous(b, "b");
+            ensure_contiguous(x, "x");
+        }
+
         auto bbuf = b.request();
         auto xbuf = x.request();
 
@@ -347,8 +370,8 @@ public:
 
     void run_phase_into(
         Index phase,
-        py::array_t<double, py::array::c_style | py::array::forcecast> b,
-        py::array_t<double, py::array::c_style | py::array::forcecast> x
+        py::array_t<double, py::array::forcecast> b,
+        py::array_t<double, py::array::forcecast> x
     ) {
         if (phase == -1) {
             throw_value_error("use release() for phase -1");
@@ -357,6 +380,16 @@ public:
         ensure_pattern();
         const Index nrhs = validate_rhs_pair(b, x);
         validate_common_preconditions(phase);
+
+        // For multi-RHS, PARDISO expects column-major layout.
+        if (b.ndim() == 2) {
+            ensure_f_contiguous(b, "b");
+            ensure_f_contiguous(x, "x");
+        } else {
+            ensure_contiguous(b, "b");
+            ensure_contiguous(x, "x");
+        }
+
         auto bbuf = b.request();
         auto xbuf = x.request();
 
@@ -463,6 +496,18 @@ private:
         }
     }
 
+    static void ensure_contiguous(const py::array& arr, const char* name) {
+        if ((arr.flags() & (py::array::c_style | py::array::f_style)) == 0) {
+            throw_value_error(std::string(name) + " must be contiguous");
+        }
+    }
+
+    static void ensure_f_contiguous(const py::array& arr, const char* name) {
+        if (!(arr.flags() & py::array::f_style)) {
+            throw_value_error(std::string(name) + " must be Fortran-contiguous (column-major) for multi-RHS solve");
+        }
+    }
+
     bool analysis_depends_on_values() const {
         // Common value-dependent analysis options in MKL PARDISO.
         return iparm_[10] != 0 || iparm_[12] != 0;
@@ -509,8 +554,8 @@ private:
     }
 
     Index validate_rhs_pair(
-        const py::array_t<double, py::array::c_style | py::array::forcecast>& b,
-        const py::array_t<double, py::array::c_style | py::array::forcecast>& x
+        const py::array_t<double, py::array::forcecast>& b,
+        const py::array_t<double, py::array::forcecast>& x
     ) const {
         if (b.ndim() != x.ndim()) {
             throw_value_error("b and x must have the same rank");
