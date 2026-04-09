@@ -379,6 +379,13 @@ public:
             return;
         }
 
+        if (phase_requires_rhs_buffers(phase)) {
+            std::ostringstream oss;
+            oss << "phase " << phase
+                << " requires explicit rhs/output arrays; use run_phase_into()";
+            throw_value_error(oss.str());
+        }
+
         ensure_pattern();
         validate_common_preconditions(phase);
         call_pardiso(phase, /*nrhs=*/1, nullptr, nullptr);
@@ -541,6 +548,11 @@ private:
     bool analysis_depends_on_values() const {
         // Common value-dependent analysis options in MKL PARDISO.
         return iparm_[10] != 0 || iparm_[12] != 0;
+    }
+
+    static bool phase_requires_rhs_buffers(Index phase) {
+        return phase == 23 || phase == 33 || phase == 331
+            || phase == 332 || phase == 333;
     }
 
     void maybe_invalidate_handle_for_iparm_change(int idx, Index new_value) {

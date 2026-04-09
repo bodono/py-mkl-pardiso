@@ -1074,6 +1074,19 @@ class TestRunPhase:
         solver.run_phase_into(23, b, x)
         npt.assert_allclose(A_full @ x, b, atol=1e-12)
 
+    def test_run_phase_rejects_phase_23_without_buffers(self, A4):
+        _, A_upper = A4
+        solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_POSDEF)
+        _set_pattern_from_csr(solver, A_upper)
+        solver.set_values(A_upper.data.astype(np.float64))
+        solver.run_phase(11)
+        with pytest.raises(ValueError, match="run_phase_into"):
+            solver.run_phase(23)
+
+    def test_run_phase_rejects_phase_33_without_buffers(self, solver4):
+        with pytest.raises(ValueError, match="run_phase_into"):
+            solver4.run_phase(33)
+
     def test_explicit_analyze(self, A4):
         """analyze() followed by refactor() should work."""
         A_full, A_upper = A4
