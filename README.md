@@ -1,5 +1,7 @@
 # py-mkl-pardiso
 
+[![Test](https://github.com/bodono/py-mkl-pardiso/actions/workflows/test.yml/badge.svg)](https://github.com/bodono/py-mkl-pardiso/actions/workflows/test.yml)
+
 Python pybind11 wrapper for the Intel oneMKL PARDISO sparse direct solver.
 
 `pymklpardiso` exposes the real-valued subset of Intel's
