@@ -49,8 +49,8 @@ std::string pardiso_error_string(Index err) {
     }
 }
 
-template <typename T>
-void require_1d(const py::array_t<T>& arr, const char* name) {
+template <typename T, int Extra>
+void require_1d(const py::array_t<T, Extra>& arr, const char* name) {
     if (arr.ndim() != 1) {
         throw_value_error(std::string(name) + " must be a 1D NumPy array");
     }
