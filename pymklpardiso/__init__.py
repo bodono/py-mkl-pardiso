@@ -18,42 +18,34 @@ class PardisoSolver:
 
     Args:
         A: Sparse matrix in CSR format (any object with indptr, indices, data,
-            shape attributes, e.g. scipy.sparse.csr_matrix). For symmetric
-            types (SPD, symmetric indefinite), the upper triangle is extracted
-            automatically — you may pass either the full matrix or just the
-            upper triangle. For structurally symmetric and nonsymmetric types,
-            pass the full matrix.
+            shape attributes, e.g. scipy.sparse.csr_matrix). The matrix must
+            be square. For symmetric types (SPD, symmetric indefinite), pass
+            only the upper triangle in CSR format. For structurally symmetric
+            and nonsymmetric types, pass the full matrix.
         mtype: Matrix type constant (MTYPE_REAL_SYM_POSDEF, etc.).
         iparms: Optional dict of {index: value} iparm overrides.
         msglvl: Message level (0 = silent, 1 = print statistics).
     """
 
     def __init__(self, A, mtype, iparms=None, msglvl=0):
+        if len(A.shape) != 2:
+            raise ValueError("A must be a 2D sparse matrix")
+        n, n_cols = A.shape
+        if n != n_cols:
+            raise ValueError("A must be square")
+
         indptr = np.asarray(A.indptr, dtype=np.int64)
         indices = np.asarray(A.indices, dtype=np.int64)
         data = np.asarray(A.data, dtype=np.float64)
-        n = A.shape[0]
 
         if mtype in _SYMMETRIC_MTYPES:
-            # PARDISO expects only the upper triangle for symmetric types.
-            rows = np.repeat(np.arange(n, dtype=np.intp), np.diff(indptr))
-
-            # Using a boolean mask is typically faster/cleaner for indexing than np.where
-            mask = indices >= rows
-
-            # Save state (using np.where here if your class needs integer indices later)
-            self._triu_mask = np.where(mask)[0]
-            self._full_nnz = len(data)
-
-            # Reconstruct indptr directly into a new array
-            new_indptr = np.zeros(n + 1, dtype=np.int64)
-            new_indptr[1:] = np.cumsum(np.bincount(rows[mask], minlength=n))
-
-            # Reassign to the expected variables
-            indptr, indices, data = new_indptr, indices[mask], data[mask]
-        else:
-            self._triu_mask = None
-            self._full_nnz = None
+            for row in range(n):
+                row_start = indptr[row]
+                row_end = indptr[row + 1]
+                if np.any(indices[row_start:row_end] < row):
+                    raise ValueError(
+                        "symmetric matrix types require upper-triangular CSR data only"
+                    )
 
         self._solver = _PardisoSolver(mtype, msglvl)
         if iparms:
@@ -70,22 +62,15 @@ class PardisoSolver:
         """Solve Ax = b writing into pre-allocated x."""
         self._solver.solve_into(b, x)
 
-    def _extract_triu_values(self, values):
-        """Extract upper-triangle values if symmetric and full data is passed."""
-        values = np.asarray(values, dtype=np.float64)
-        if self._triu_mask is not None and len(values) == self._full_nnz:
-            values = values[self._triu_mask]
-        return values
-
     def refactor(self, values):
         """Re-factorize with new values (same sparsity pattern).
 
         Runs only numeric factorization (phase 22). Does not re-run symbolic
         analysis. Use factor() to re-analyze from scratch.
 
-        For symmetric types, accepts either full-matrix or upper-triangle data.
+        Values must match the stored sparsity pattern exactly.
         """
-        self._solver.refactor_values(self._extract_triu_values(values))
+        self._solver.refactor_values(np.asarray(values, dtype=np.float64))
 
     def factor(self, values):
         """Re-analyze and re-factorize with new values (phases 11 + 22).
@@ -93,9 +78,9 @@ class PardisoSolver:
         Use this for error recovery or when iparm changes require fresh
         symbolic analysis. For normal refactoring, use refactor().
 
-        For symmetric types, accepts either full-matrix or upper-triangle data.
+        Values must match the stored sparsity pattern exactly.
         """
-        self._solver.factor(self._extract_triu_values(values))
+        self._solver.factor(np.asarray(values, dtype=np.float64))
 
     # -- iparm access --
 
