@@ -3,7 +3,7 @@ import numpy.testing as npt
 import pytest
 import scipy.sparse as sp
 
-import pymklpardiso
+import pymklpardiso._mkl_pardiso as pymklpardiso
 
 
 # ---------------------------------------------------------------------------
