@@ -33,6 +33,7 @@ jobs:
           CIBW_ARCHS: x86_64
           CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-* cp314-*"
           CIBW_SKIP: "pp* *-musllinux*"
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
 
           # Install Miniforge once, then use it to install MKL into a
           # known prefix. Static linking embeds MKL into the wheel.
