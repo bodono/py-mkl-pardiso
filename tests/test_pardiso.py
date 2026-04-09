@@ -778,18 +778,18 @@ class TestStateErrors:
             solver.run_phase(12)
 
     def test_run_phase_23_before_values(self):
-        """Phase 23 requires values to be set."""
+        """Phase 23 requires explicit RHS/output arrays."""
         solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_POSDEF)
         solver.set_pattern(
             ia=np.array([0, 1], dtype=np.int64),
             ja=np.array([0], dtype=np.int64),
             n=1,
         )
-        with pytest.raises(RuntimeError, match="values"):
+        with pytest.raises(ValueError, match="explicit rhs/output arrays"):
             solver.run_phase(23)
 
     def test_run_phase_33_before_factor(self):
-        """Phase 33 (solve) requires prior factorization."""
+        """Phase 33 requires explicit RHS/output arrays."""
         solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_POSDEF)
         solver.set_pattern(
             ia=np.array([0, 1], dtype=np.int64),
@@ -797,7 +797,7 @@ class TestStateErrors:
             n=1,
         )
         solver.set_values(np.array([1.0]))
-        with pytest.raises(RuntimeError, match="factorization"):
+        with pytest.raises(ValueError, match="explicit rhs/output arrays"):
             solver.run_phase(33)
 
 
@@ -1104,6 +1104,19 @@ class TestRunPhase:
         x = np.zeros(4)
         solver.run_phase_into(23, b, x)
         npt.assert_allclose(A_full @ x, b, atol=1e-12)
+
+    def test_run_phase_rejects_phase_23_without_buffers(self, A4):
+        _, A_upper = A4
+        solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_POSDEF)
+        _set_pattern_from_csr(solver, A_upper)
+        solver.set_values(A_upper.data.astype(np.float64))
+        solver.run_phase(11)
+        with pytest.raises(ValueError, match="run_phase_into"):
+            solver.run_phase(23)
+
+    def test_run_phase_rejects_phase_33_without_buffers(self, solver4):
+        with pytest.raises(ValueError, match="run_phase_into"):
+            solver4.run_phase(33)
 
     def test_explicit_analyze(self, A4):
         """analyze() followed by refactor() should work."""
