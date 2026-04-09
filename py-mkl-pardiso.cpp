@@ -192,18 +192,23 @@ public:
         auto ia_u = ia.unchecked<1>();
         auto ja_u = ja.unchecked<1>();
 
-        const Index nnz = ia_u(n);
-        if (nnz < 0) {
-            throw_value_error("ia[n] must be nonnegative");
+        if (ia_u(0) != 0) {
+            throw_value_error("ia[0] must be 0");
         }
-        if (ja.size() != static_cast<py::ssize_t>(nnz)) {
-            throw_value_error("ja length must equal ia[n]");
+        for (Index i = 0; i <= n; ++i) {
+            if (ia_u(i) < 0) {
+                throw_value_error("ia entries must be nonnegative");
+            }
         }
-
         for (Index i = 0; i < n; ++i) {
             if (ia_u(i) > ia_u(i + 1)) {
                 throw_value_error("ia must be nondecreasing");
             }
+        }
+
+        const Index nnz = ia_u(n);
+        if (ja.size() != static_cast<py::ssize_t>(nnz)) {
+            throw_value_error("ja length must equal ia[n]");
         }
         for (Index k = 0; k < nnz; ++k) {
             if (ja_u(k) < 0 || ja_u(k) >= n) {
