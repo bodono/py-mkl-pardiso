@@ -36,7 +36,9 @@ jobs:
           CFLAGS: "-fsanitize=address -fno-omit-frame-pointer -g"
           CXXFLAGS: "-fsanitize=address -fno-omit-frame-pointer -g"
           LDFLAGS: "-fsanitize=address -shared-libasan"
-        run: pip install -e ".[test]" -v --no-build-isolation
+        run: |
+          pip install pybind11 setuptools
+          pip install -e ".[test]" -v --no-build-isolation
 
       - name: Run tests under ASAN
         env:
