@@ -49,3 +49,18 @@
    ...
    obj:*/numpy*
 }
+
+# MKL internal false positives — uninitialized stack variables inside PARDISO.
+{
+   mkl-pardiso-uninit-cond
+   Memcheck:Cond
+   ...
+   obj:*/libmkl_*
+}
+
+{
+   mkl-pardiso-uninit-value
+   Memcheck:Value8
+   ...
+   obj:*/libmkl_*
+}
