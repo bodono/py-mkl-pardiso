@@ -112,6 +112,14 @@ fresh symbolic analysis. Use this for error recovery or when iparm changes
 require fresh symbolic analysis. `values` must match the stored sparsity
 pattern exactly.
 
+Analysis invalidation: symbolic analysis (phase 11) becomes invalid when an
+`iparm` value changes via `set_iparm()` or `set_iparm_all()`, or after
+`release()` / `reset()`. Changing numeric values alone does not invalidate
+analysis. After a successful `factor()`, subsequent `refactor()` calls
+continue to work, including with value-dependent analysis settings such as
+`iparm[10] = 1`. When analysis is invalid, `refactor()` raises; call
+`factor()` to re-analyze and recover.
+
 ### Other methods
 
 | Method | Description |
