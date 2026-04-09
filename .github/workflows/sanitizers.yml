@@ -52,7 +52,7 @@ jobs:
           ASAN_RT=$(gcc -print-file-name=libasan.so)
           # Skip tests that throw C++ exceptions (ASAN __cxa_throw
           # interception is incompatible with non-ASAN Python).
-          LD_PRELOAD="$ASAN_RT" pytest -v tests/ -k "not rejects and not before and not wrong and not invalid and not negative and not mismatch and not out_of_range" || true
+          LD_PRELOAD="$ASAN_RT" pytest -v tests/ -k "not rejects and not rejected and not before and not wrong and not invalid and not negative and not mismatch and not out_of_range and not unsorted and not non_1d and not nondecreasing and not release" || true
           echo "=== ASAN reports ==="
           cat /tmp/asan.* 2>/dev/null || echo "No ASAN log files found"
           if ls /tmp/asan.* 1>/dev/null 2>&1; then exit 1; fi
