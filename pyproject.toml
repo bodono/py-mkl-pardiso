@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "py-mkl-pardiso"
 version = "0.0.1"
 description = "Python pybind11 wrapper for Intel oneMKL PARDISO sparse direct solver"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 license = "MIT"
 authors = [
     {name = "Brendan O'Donoghue"},
@@ -19,6 +19,7 @@ classifiers = [
     "Operating System :: POSIX :: Linux",
     "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",

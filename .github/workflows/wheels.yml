@@ -38,20 +38,19 @@ jobs:
         uses: pypa/cibuildwheel@v2.21
         env:
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
-          CIBW_BUILD: "cp311-* cp312-* cp313-* cp314-*"
+          CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-* cp314-*"
           CIBW_SKIP: "pp* *-musllinux*"
 
-          # Linux: install MKL via apt inside the manylinux container.
-          CIBW_BEFORE_ALL_LINUX: >
-            yum install -y intel-mkl ||
-            (apt-get update && apt-get install -y libmkl-dev) ||
-            pip install mkl-static mkl-include
-          CIBW_ENVIRONMENT_LINUX: >
-            MKLROOT=/usr
+          # Install MKL static libs + headers via pip before each build.
+          # mkl-static provides true static archives so MKL is embedded in
+          # the wheel — users don't need MKL installed at runtime.
+          CIBW_BEFORE_BUILD: pip install mkl-static mkl-include
 
-          # Windows: install MKL via pip (mkl-devel provides headers + libs).
-          CIBW_BEFORE_BUILD_WINDOWS: >
-            pip install mkl-devel mkl-include
+          # Linux: force static linking via full .a archive paths.
+          CIBW_ENVIRONMENT_LINUX: PYMKLPARDISO_STATIC=1
+
+          # Windows: MSVC automatically static-links the .lib files from
+          # mkl-static (they are real static libs, not import libs).
 
           CIBW_TEST_REQUIRES: pytest
           CIBW_TEST_COMMAND: pytest {project}/tests -v
