@@ -1,0 +1,57 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: "3.12"
+          - os: ubuntu-latest
+            python: "3.11"
+          - os: ubuntu-latest
+            python: "3.13"
+          - os: windows-latest
+            python: "3.12"
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install MKL (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y intel-mkl
+
+      - name: Install MKL (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          pip install mkl-devel mkl-include mkl
+
+      - name: Set MKLROOT (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $mklInclude = python -c "import mkl_include; print(mkl_include.get_include())"
+          $mklRoot = Split-Path (Split-Path $mklInclude)
+          echo "MKLROOT=$mklRoot" >> $env:GITHUB_ENV
+
+      - name: Install package
+        run: pip install -e ".[test]"
+
+      - name: Run tests
+        run: pytest -v tests/

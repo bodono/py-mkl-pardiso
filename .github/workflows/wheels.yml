@@ -1,0 +1,77 @@
+name: Build wheels
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build-sdist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build sdist
+        run: pipx run build --sdist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  build-wheels:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            cibw_archs: x86_64
+          - os: windows-latest
+            cibw_archs: AMD64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.21
+        env:
+          CIBW_ARCHS: ${{ matrix.cibw_archs }}
+          CIBW_SKIP: "cp39-* pp* *-musllinux*"
+
+          # Linux: install MKL via apt inside the manylinux container.
+          CIBW_BEFORE_ALL_LINUX: >
+            apt-get update &&
+            apt-get install -y intel-mkl
+          CIBW_ENVIRONMENT_LINUX: >
+            MKLROOT=/usr/lib/x86_64-linux-gnu
+
+          # Windows: install MKL via pip (mkl-devel provides headers + libs).
+          CIBW_BEFORE_BUILD_WINDOWS: >
+            pip install mkl-devel mkl-include mkl
+          CIBW_ENVIRONMENT_WINDOWS: >
+            MKLROOT=C:\\Program Files (x86)\\Intel\\oneAPI\\mkl\\latest
+
+          CIBW_TEST_REQUIRES: pytest
+          CIBW_TEST_COMMAND: pytest {project}/tests -v
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}-${{ matrix.cibw_archs }}
+          path: wheelhouse/*.whl
+
+  publish:
+    needs: [build-sdist, build-wheels]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    permissions:
+      id-token: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1

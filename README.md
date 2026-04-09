@@ -1,33 +1,31 @@
-# macldlt v0.0.0
+# py-mkl-pardiso
 
-Python wrapper for Apple Accelerate's sparse LDL^T factorization.
+Python pybind11 wrapper for the Intel oneMKL PARDISO sparse direct solver.
 
-`macldlt` exposes the symmetric indefinite sparse solver from Apple's
-[Accelerate framework](https://developer.apple.com/documentation/accelerate/sparse_solvers)
-to Python via [pybind11](https://github.com/pybind/pybind11). It accepts
-SciPy sparse matrices and NumPy arrays directly, with no manual conversion
-needed.
+`pymklpardiso` exposes the real-valued subset of Intel's
+[PARDISO](https://www.intel.com/content/www/us/en/docs/onemkl/developer-reference-c/2025-0/onemkl-pardiso-parallel-direct-sparse-solver-iface.html)
+sparse direct solver to Python via [pybind11](https://github.com/pybind/pybind11).
+It works with SciPy sparse matrices in CSR format and NumPy arrays.
 
-**macOS only** — requires macOS 13.0+ for full functionality (including
-`SparseGetInertia`).
+**Supported platforms:** Linux (x86_64), Windows (AMD64).
 
 ## Installation
 
 ```bash
-pip install macldlt
+pip install py-mkl-pardiso
 ```
 
-Or install from source:
+Or install from source (requires MKL):
 
 ```bash
-git clone https://github.com/bodono/macldlt.git
-cd macldlt
+git clone https://github.com/bodono/py-mkl-pardiso.git
+cd py-mkl-pardiso
 pip install -e ".[test]"
 ```
 
 Building from source requires:
-- macOS 13.0+
-- A C++17 compiler (Xcode command-line tools)
+- Intel oneMKL (set `MKLROOT` if not auto-detected)
+- A C++17 compiler
 - Python >= 3.10
 - pybind11 >= 2.12
 
@@ -36,15 +34,25 @@ Building from source requires:
 ```python
 import numpy as np
 import scipy.sparse as sp
-from macldlt import LDLTSolver
+from pymklpardiso import PardisoSolver, MTYPE_REAL_SYM_POSDEF
 
-# Build a symmetric positive-definite matrix
-A = sp.csc_matrix(np.array([
-    [ 4.0, 1.0],
-    [ 1.0, 3.0],
-]))
+# Build a symmetric positive-definite matrix (upper triangle, CSR)
+A_full = np.array([
+    [4.0, 1.0],
+    [1.0, 3.0],
+])
+A_upper = sp.csr_matrix(np.triu(A_full))
+A_upper.sort_indices()
 
-solver = LDLTSolver(A)
+# Create solver, set pattern, factor, solve
+solver = PardisoSolver(MTYPE_REAL_SYM_POSDEF)
+solver.set_pattern(
+    ia=A_upper.indptr.astype(np.int64),
+    ja=A_upper.indices.astype(np.int64),
+    n=A_upper.shape[0],
+)
+solver.factor(A_upper.data)
+
 b = np.array([1.0, 2.0])
 x = solver.solve(b)
 print(x)  # [0.09090909 0.63636364]
@@ -52,194 +60,89 @@ print(x)  # [0.09090909 0.63636364]
 
 ## API reference
 
-### `LDLTSolver(A, triangle="upper", ordering="amd", factorization="ldlt")`
+### `PardisoSolver(mtype, msglvl=0)`
 
-Perform symbolic analysis and numeric factorization of `A`. The solver is
-immediately ready to call `solve()`.
-
-**Parameters:**
+Create a PARDISO solver instance.
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `A` | scipy sparse matrix | *(required)* | Square symmetric sparse matrix (CSC, CSR, or COO). CSR and COO are converted to CSC internally. |
-| `triangle` | `str` | `"upper"` | Which triangle of `A` is stored: `"upper"` or `"lower"`. |
-| `ordering` | `str` | `"amd"` | Fill-reducing ordering for symbolic analysis: `"default"`, `"amd"`, `"metis"`, or `"colamd"`. |
-| `factorization` | `str` | `"ldlt"` | Factorization variant: `"ldlt"`, `"ldlt_tpp"`, `"ldlt_sbk"`, or `"ldlt_unpivoted"`. |
+| `mtype` | `int` | *(required)* | Matrix type (see constants below). |
+| `msglvl` | `int` | `0` | Message level (0 = silent, 1 = print statistics). |
 
-**Notes:**
+### Matrix type constants
 
-- Symmetry is assumed but **not checked**. Only the specified triangle is read;
-  the other triangle is ignored. If you pass a full symmetric matrix, set
-  `triangle` to whichever triangle contains the data you want used.
-- The solver is **not thread-safe**. Do not call methods concurrently on the
-  same instance from multiple threads.
-- For a new sparsity pattern, create a new solver.
-
-**Example:**
-
-```python
-# Upper triangle of a 3x3 symmetric matrix
-A_upper = sp.csc_matrix(np.array([
-    [4.0, 1.0, 0.0],
-    [0.0, 3.0, 2.0],
-    [0.0, 0.0, 5.0],
-]))
-solver = LDLTSolver(A_upper, triangle="upper")
-```
-
----
-
-### `solver.refactor(values)`
-
-Reuse the existing symbolic analysis and numeric factorization workspace for
-new values with the **same sparsity pattern**. This calls Accelerate's
-`SparseRefactor`, which can be faster than a full `factor()`.
-
-**Parameters:**
-
-| Parameter | Type | Description |
+| Constant | Value | Description |
 |---|---|---|
-| `values` | `numpy.ndarray` | 1D float64 array of nonzero values in CSC storage order, matching the original sparsity pattern. Length must equal the number of stored nonzeros (i.e., `A.data` from the original scipy sparse matrix). Non-float64 arrays are cast automatically. |
+| `MTYPE_REAL_STRUCT_SYM` | -1 | Real structurally symmetric |
+| `MTYPE_REAL_SYM_POSDEF` | 2 | Real symmetric positive definite |
+| `MTYPE_REAL_SYM_INDEF` | -2 | Real symmetric indefinite |
+| `MTYPE_REAL_NONSYM` | 11 | Real nonsymmetric |
+
+### Core methods
+
+**`solver.set_pattern(ia, ja, n, check_sorted=True)`**
+Set the CSR sparsity pattern. Uses zero-based indexing. Column indices must
+be sorted within each row (unless `check_sorted=False`). For symmetric types,
+pass only the upper triangle.
+
+**`solver.factor(a)`**
+Set numeric values and factorize. Runs symbolic analysis automatically if
+needed.
+
+**`solver.solve(b)`**
+Solve `Ax = b`. Accepts 1D `(n,)` or 2D `(n, nrhs)` arrays. Returns the
+solution as a new NumPy array (Fortran-contiguous for 2D).
+
+**`solver.solve_into(b, x)`**
+Solve `Ax = b` writing into pre-allocated `x`. For 2D arrays, both `b` and
+`x` must be Fortran-contiguous.
+
+### Refactoring workflow
+
+**`solver.set_values(a)`**
+Load new numeric values (same sparsity pattern).
+
+**`solver.refactor()`**
+Re-factorize using the currently loaded values.
 
 ```python
-# In a tight loop, just pass new values
 for new_values in value_generator:
-    solver.refactor(new_values)
+    solver.set_values(new_values)
+    solver.refactor()
     x = solver.solve(b)
 ```
 
----
+### Other methods
 
-### `solver.solve(rhs, inplace=False)`
-
-Solve `Ax = rhs`.
-
-By default, allocates and returns a new NumPy array. With `inplace=True`,
-overwrites `rhs` in place and returns it (avoids allocation).
-
-**Parameters:**
-
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `rhs` | `numpy.ndarray` | *(required)* | 1D array of length `n`, or 2D array of shape `(n, k)`. |
-| `inplace` | `bool` | `False` | If `True`, solve in place. Requires writeable C-contiguous float64 (1D) or F-contiguous float64 (2D). |
-
-**Returns:** `numpy.ndarray` — the solution, same shape as `rhs`.
-
-```python
-# Allocating solve
-x = solver.solve(b)
-
-# In-place solve (no allocation)
-solver.solve(b, inplace=True)
-# b now contains the solution
-```
-
----
-
-### `solver.inertia()`
-
-Return the inertia of the factored matrix as a tuple
-`(num_negative, num_zero, num_positive)`, where:
-
-- `num_negative` — number of negative pivots
-- `num_zero` — number of zero pivots
-- `num_positive` — number of positive pivots
-
-The sum `num_negative + num_zero + num_positive` equals `n`.
-
-```python
-neg, zero, pos = solver.inertia()
-if zero > 0:
-    print("Matrix is singular")
-if neg == 0 and zero == 0:
-    print("Matrix is positive definite")
-```
-
----
-
-### `solver.info()`
-
-Return a dictionary with solver state and workspace information.
-
-**Returns:** `dict` with keys:
-
-| Key | Description |
+| Method | Description |
 |---|---|
-| `n` | Matrix dimension |
-| `symbolic_status` | Status of symbolic factorization (e.g., `"SparseStatusOK"`) |
-| `numeric_status` | Status of numeric factorization (e.g., `"SparseStatusOK"`) |
-| `factor_workspace_allocated_bytes` | Bytes allocated for factorization workspace |
-| `solve_workspace_allocated_bytes` | Bytes allocated for solve workspace |
-| `factor_workspace_required_bytes` | Bytes required for factorization (if symbolic analysis done) |
-| `symbolic_workspace_double` | Symbolic workspace size reported by Accelerate |
-| `factor_size_double` | Factor size reported by Accelerate |
-| `solve_workspace_required_bytes_1rhs` | Solve workspace bytes for a single RHS (if numeric factorization done) |
-| `solve_workspace_static` | Static solve workspace component |
-| `solve_workspace_per_rhs` | Per-RHS solve workspace component |
+| `solver.analyze()` | Run symbolic analysis (phase 11) explicitly. |
+| `solver.release()` | Free PARDISO internal memory. |
+| `solver.reset()` | Release and clear all state. |
+| `solver.n()` | Matrix dimension. |
+| `solver.mtype()` | Matrix type. |
+| `solver.set_perm(perm)` | Set fill-reducing permutation. |
+| `solver.clear_perm()` | Clear permutation. |
+| `solver.has_perm()` | Whether a permutation is set. |
+| `solver.set_iparm(idx, value)` | Set a single iparm entry. |
+| `solver.get_iparm()` | Get all 64 iparm values. |
+| `solver.get_iparm_value(idx)` | Get a single iparm value. |
+| `solver.set_iparm_all(iparm)` | Set all 64 iparm values. |
+| `solver.set_msglvl(msglvl)` | Change message level. |
+| `solver.run_phase(phase)` | Run an arbitrary PARDISO phase. |
+| `solver.run_phase_into(phase, b, x)` | Run a phase with RHS/output arrays. |
 
----
+### iparm notes
 
-### Properties
-
-| Property | Type | Description |
-|---|---|---|
-| `solver.n` | `int` | Matrix dimension. |
-| `solver.symbolic_status` | `str` | Symbolic factorization status string. |
-| `solver.numeric_status` | `str` | Numeric factorization status string. |
-
-## Typical workflow
-
-```
-solver = LDLTSolver(A) ──► solve()              # one-shot usage
-              │
-              └── refactor(values) ──► solve()   # same pattern, new values
-
-solver = LDLTSolver(A_new) ──► solve()           # new sparsity pattern
-```
-
-1. **One-shot solve:** Pass `A` to the constructor, then call `solve()`.
-2. **Repeated solves, same pattern:** Call `refactor(new_vals)` then `solve()`.
-   The symbolic analysis from the constructor is reused.
-3. **New sparsity pattern:** Create a new `LDLTSolver` with the new matrix.
+- `iparm[0]` is locked to `1` (user-supplied parameters).
+- `iparm[34]` is locked to `1` (zero-based indexing).
+- See the [MKL PARDISO iparm documentation](https://www.intel.com/content/www/us/en/docs/onemkl/developer-reference-c/2025-0/pardiso-iparm-parameter.html) for all parameters.
 
 ## Benchmarking
-
-The main performance win comes from reusing symbolic analysis when only the
-numeric values change. A small benchmark script is included:
 
 ```bash
 python benchmarks/refactor_benchmark.py --n 2000 --density 0.002 --iterations 25
 ```
-
-This compares repeated `refactor()` calls against rebuilding a fresh
-`LDLTSolver` each iteration for the same sparsity pattern.
-
-## Triangle conventions
-
-Accelerate's symmetric solver reads only one triangle of the matrix. You
-specify which triangle is stored via the `triangle` parameter:
-
-```python
-import numpy as np
-import scipy.sparse as sp
-
-A_full = np.array([
-    [4.0, 1.0],
-    [1.0, 3.0],
-])
-
-# If you store the upper triangle:
-A_upper = sp.csc_matrix(np.triu(A_full))
-solver = LDLTSolver(A_upper, triangle="upper")
-
-# If you store the lower triangle:
-A_lower = sp.csc_matrix(np.tril(A_full))
-solver = LDLTSolver(A_lower, triangle="lower")
-```
-
-If you pass a full symmetric matrix with `triangle="upper"`, only the upper
-triangle entries are used — the lower triangle is ignored (and vice versa).
 
 ## License
 

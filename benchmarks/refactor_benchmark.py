@@ -4,14 +4,27 @@ import time
 import numpy as np
 import scipy.sparse as sp
 
-from macldlt import LDLTSolver
+from pymklpardiso import PardisoSolver, MTYPE_REAL_SYM_POSDEF
 
 
 def make_problem(n, density, seed):
     rng = np.random.default_rng(seed)
-    r = sp.random(n, n, density=density, random_state=rng, format="csc")
-    m = r.T @ r + 0.1 * sp.eye(n, format="csc")
-    return sp.triu(m, format="csc"), rng
+    r = sp.random(n, n, density=density, random_state=rng, format="csr")
+    m = (r.T @ r + 0.1 * sp.eye(n, format="csr")).tocsr()
+    m_upper = sp.triu(m, format="csr")
+    m_upper.sort_indices()
+    return m_upper, rng
+
+
+def make_solver(m_upper):
+    solver = PardisoSolver(MTYPE_REAL_SYM_POSDEF)
+    solver.set_pattern(
+        ia=m_upper.indptr.astype(np.int64),
+        ja=m_upper.indices.astype(np.int64),
+        n=m_upper.shape[0],
+    )
+    solver.factor(m_upper.data.astype(np.float64))
+    return solver
 
 
 def main():
@@ -24,25 +37,31 @@ def main():
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
 
-    a_upper, rng = make_problem(args.n, args.density, args.seed)
-    solver = LDLTSolver(a_upper)
+    m_upper, rng = make_problem(args.n, args.density, args.seed)
+    solver = make_solver(m_upper)
     b = rng.standard_normal(args.n)
 
     refactor_values = []
     for _ in range(args.iterations):
-        scale = 1.0 + 0.01 * rng.standard_normal(a_upper.data.shape[0])
-        refactor_values.append(a_upper.data * scale)
+        scale = 1.0 + 0.01 * rng.standard_normal(m_upper.data.shape[0])
+        refactor_values.append(m_upper.data * scale)
 
+    # Benchmark refactor path
     t0 = time.perf_counter()
     for values in refactor_values:
-        solver.refactor(values)
+        solver.set_values(values)
+        solver.refactor()
         solver.solve(b)
     refactor_seconds = time.perf_counter() - t0
 
+    # Benchmark full rebuild path
     t0 = time.perf_counter()
     for values in refactor_values:
-        a_new = sp.csc_matrix((values, a_upper.indices, a_upper.indptr), shape=a_upper.shape)
-        LDLTSolver(a_new).solve(b)
+        m_new = sp.csr_matrix(
+            (values, m_upper.indices, m_upper.indptr), shape=m_upper.shape
+        )
+        s = make_solver(m_new)
+        s.solve(b)
     rebuild_seconds = time.perf_counter() - t0
 
     print(f"n={args.n} density={args.density} iterations={args.iterations}")
