@@ -49,8 +49,8 @@ std::string pardiso_error_string(Index err) {
     }
 }
 
-template <typename T>
-void require_1d(const py::array_t<T>& arr, const char* name) {
+template <typename T, int Extra>
+void require_1d(const py::array_t<T, Extra>& arr, const char* name) {
     if (arr.ndim() != 1) {
         throw_value_error(std::string(name) + " must be a 1D NumPy array");
     }
@@ -412,6 +412,12 @@ public:
         double ddum = 0.0;
         Index error = 0;
 
+        std::vector<Index> perm_buf;
+        if (perm_.empty() && n_ > 0) {
+            perm_buf.resize(static_cast<std::size_t>(n_), 0);
+        }
+        Index* p_ptr = perm_.empty() ? perm_buf.data() : perm_.data();
+
         {
             py::gil_scoped_release nogil;
             pardiso_64(
@@ -424,7 +430,7 @@ public:
                 &ddum,
                 ia_.empty() ? &idum : ia_.data(),
                 ja_.empty() ? &idum : ja_.data(),
-                perm_.empty() ? &idum : perm_.data(),
+                p_ptr,
                 &nrhs,
                 iparm_.data(),
                 &msglvl_,
@@ -608,7 +614,14 @@ private:
         double* a_ptr = a_.empty() ? &ddum : a_.data();
         Index* ia_ptr = ia_.empty() ? &idum : ia_.data();
         Index* ja_ptr = ja_.empty() ? &idum : ja_.data();
-        Index* p_ptr = perm_.empty() ? &idum : perm_.data();
+
+        // PARDISO writes the fill-in reducing permutation (size n) to perm
+        // during phase 11, so we must always provide a properly-sized buffer.
+        std::vector<Index> perm_buf;
+        if (perm_.empty() && n_ > 0) {
+            perm_buf.resize(static_cast<std::size_t>(n_), 0);
+        }
+        Index* p_ptr = perm_.empty() ? perm_buf.data() : perm_.data();
 
         {
             py::gil_scoped_release nogil;
@@ -726,7 +739,7 @@ For phase -1, use release().
         .def("release", &PardisoSolver::release);
 
     // Common real-valued matrix types.
-    m.attr("MTYPE_REAL_STRUCT_SYM") = py::int_(-1);
+    m.attr("MTYPE_REAL_STRUCT_SYM") = py::int_(1);
     m.attr("MTYPE_REAL_SYM_INDEF")  = py::int_(-2);
     m.attr("MTYPE_REAL_SYM_POSDEF") = py::int_(2);
     m.attr("MTYPE_REAL_NONSYM")     = py::int_(11);
