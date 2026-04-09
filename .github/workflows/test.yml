@@ -32,10 +32,23 @@ jobs:
       - name: Install MKL
         run: conda install -y mkl-devel
 
-      - name: Install package
+      - name: Set MKLROOT
         run: |
-          export MKLROOT=$CONDA_PREFIX
-          pip install -e ".[test]"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            echo "MKLROOT=$CONDA_PREFIX/Library" >> $GITHUB_ENV
+          else
+            echo "MKLROOT=$CONDA_PREFIX" >> $GITHUB_ENV
+          fi
+
+      - name: Install package
+        run: pip install -e ".[test]"
+
+      - name: Verify import
+        run: python -c "import pymklpardiso; print('OK:', pymklpardiso.PardisoSolver)"
 
       - name: Run tests
-        run: pytest -v tests/
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            export LD_LIBRARY_PATH=$CONDA_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+          fi
+          pytest -v tests/
