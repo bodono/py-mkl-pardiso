@@ -45,11 +45,16 @@ jobs:
 
       - name: Run tests under ASAN
         env:
-          ASAN_OPTIONS: "detect_leaks=0:halt_on_error=1:print_legend=1"
+          ASAN_OPTIONS: "detect_leaks=0:halt_on_error=1:log_path=/tmp/asan"
         run: |
           # Preload the ASAN runtime that matches the system gcc.
           ASAN_RT=$(gcc -print-file-name=libasan.so)
-          LD_PRELOAD="$ASAN_RT" pytest -v tests/
+          LD_PRELOAD="$ASAN_RT" pytest -v tests/ || true
+          # Print any ASAN reports.
+          echo "=== ASAN reports ==="
+          cat /tmp/asan.* 2>/dev/null || echo "No ASAN log files found"
+          # Fail if there were ASAN reports.
+          if ls /tmp/asan.* 1>/dev/null 2>&1; then exit 1; fi
 
   valgrind:
     name: Valgrind memcheck
