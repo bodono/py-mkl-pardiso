@@ -3,9 +3,9 @@ requires = ["setuptools>=64", "pybind11>=2.12"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "macldlt"
-version = "0.0.0"
-description = "Python wrapper for Apple Accelerate sparse LDL^T factorization"
+name = "py-mkl-pardiso"
+version = "0.0.1"
+description = "Python pybind11 wrapper for Intel oneMKL PARDISO sparse direct solver"
 requires-python = ">=3.10"
 license = "MIT"
 authors = [
@@ -16,7 +16,8 @@ dependencies = [
     "scipy",
 ]
 classifiers = [
-    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -32,3 +33,7 @@ test = ["pytest"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pymklpardiso*"]
