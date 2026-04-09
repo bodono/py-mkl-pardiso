@@ -61,7 +61,17 @@ def find_mkl():
         if os.path.isfile(os.path.join(inc, "mkl.h")):
             return inc, lib
 
-    # 4. Fallback: pip-installed MKL packages (mkl-include + mkl-static/mkl-devel)
+    # 4. System-installed MKL (e.g. apt-get install libmkl-dev on Ubuntu/Debian)
+    if sys.platform == "linux":
+        _sys_pairs = [
+            ("/usr/include/mkl", "/usr/lib/x86_64-linux-gnu"),
+            ("/usr/include", "/usr/lib/x86_64-linux-gnu"),
+        ]
+        for inc, lib in _sys_pairs:
+            if os.path.isfile(os.path.join(inc, "mkl.h")):
+                return inc, lib
+
+    # 5. Fallback: pip-installed MKL packages (mkl-include + mkl-static/mkl-devel)
     pip_result = _find_mkl_via_pip()
     if pip_result is not None:
         return pip_result

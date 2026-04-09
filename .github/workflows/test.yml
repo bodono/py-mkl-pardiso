@@ -50,11 +50,11 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
-      - name: Install MKL
-        run: pip install mkl-devel mkl-include mkl
+      - name: Install MKL and build deps
+        run: pip install mkl-devel mkl-include setuptools pybind11
 
       - name: Install package
-        run: pip install -e ".[test]"
+        run: pip install --no-build-isolation -e ".[test]"
 
       - name: Run tests
         run: pytest -v tests/
