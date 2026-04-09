@@ -34,7 +34,6 @@ class PardisoSolver:
         data = np.asarray(A.data, dtype=np.float64)
         n = A.shape[0]
 
-
         if mtype in _SYMMETRIC_MTYPES:
             # PARDISO expects only the upper triangle for symmetric types.
             rows = np.repeat(np.arange(n, dtype=np.intp), np.diff(indptr))
