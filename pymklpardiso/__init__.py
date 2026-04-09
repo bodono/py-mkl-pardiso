@@ -34,21 +34,24 @@ class PardisoSolver:
         data = np.asarray(A.data, dtype=np.float64)
         n = A.shape[0]
 
+
         if mtype in _SYMMETRIC_MTYPES:
             # PARDISO expects only the upper triangle for symmetric types.
-            # Extract it automatically so callers can pass full matrices.
             rows = np.repeat(np.arange(n, dtype=np.intp), np.diff(indptr))
-            mask = np.where(indices >= rows)[0]
-            self._triu_mask = mask
+
+            # Using a boolean mask is typically faster/cleaner for indexing than np.where
+            mask = indices >= rows
+
+            # Save state (using np.where here if your class needs integer indices later)
+            self._triu_mask = np.where(mask)[0]
             self._full_nnz = len(data)
-            triu_indices = indices[mask]
-            triu_data = data[mask]
-            upper_rows = rows[mask]
-            counts = np.bincount(upper_rows, minlength=n).astype(np.int64)
-            triu_indptr = np.empty(n + 1, dtype=np.int64)
-            triu_indptr[0] = 0
-            np.cumsum(counts, out=triu_indptr[1:])
-            indptr, indices, data = triu_indptr, triu_indices, triu_data
+
+            # Reconstruct indptr directly into a new array
+            new_indptr = np.zeros(n + 1, dtype=np.int64)
+            new_indptr[1:] = np.cumsum(np.bincount(rows[mask], minlength=n))
+
+            # Reassign to the expected variables
+            indptr, indices, data = new_indptr, indices[mask], data[mask]
         else:
             self._triu_mask = None
             self._full_nnz = None
