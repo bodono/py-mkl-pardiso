@@ -415,7 +415,9 @@ class TestQtqpWorkflow:
             A2_full[2, 2] += delta
             A2_upper = sp.csr_matrix(np.triu(A2_full))
             A2_upper.sort_indices()
-            solver.refactor(A2_upper.data.astype(np.float64))
+            # These iparm settings invalidate symbolic analysis, so recovery
+            # must go through factor(), not refactor().
+            solver.factor(A2_upper.data.astype(np.float64))
             x = solver.solve(b)
             npt.assert_allclose(A2_full @ x, b, atol=1e-6)
 
