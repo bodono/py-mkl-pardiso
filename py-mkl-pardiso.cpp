@@ -247,11 +247,6 @@ public:
 
         values_set_ = true;
         factored_ = false;
-
-        // If phase 1 depends on values, changing values invalidates previous analysis.
-        if (analysis_depends_on_values()) {
-            analyzed_ = false;
-        }
     }
 
     void set_perm(py::array_t<Index, py::array::c_style | py::array::forcecast> perm) {

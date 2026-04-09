@@ -1586,7 +1586,7 @@ class TestIparmInvalidation:
         x = solver.solve(b)
         npt.assert_allclose(A_full @ x, b, atol=1e-12)
 
-    def test_refactor_rejects_value_dependent_analysis_settings(self):
+    def test_refactor_requires_reanalysis_after_value_dependent_iparm_change(self):
         A_full = np.array([
             [4.0, 1.0, 0.0],
             [1.0, -3.0, 2.0],
@@ -1597,8 +1597,11 @@ class TestIparmInvalidation:
 
         solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_INDEF)
         _set_pattern_from_csr(solver, A_upper)
-        solver.set_iparm(10, 1)
         solver.factor(A_upper.data.astype(np.float64))
+
+        # Changing to a value-dependent analysis setting invalidates the
+        # previous analysis until factor() re-runs phase 11.
+        solver.set_iparm(10, 1)
 
         A2_full = A_full.copy()
         A2_full[0, 0] += 1.0
@@ -1607,6 +1610,36 @@ class TestIparmInvalidation:
         solver.set_values(A2_upper.data.astype(np.float64))
         with pytest.raises(RuntimeError, match="call factor"):
             solver.refactor()
+
+    def test_factor_recovery_preserves_refactor_for_value_dependent_analysis(self):
+        A_full = np.array([
+            [4.0, 1.0, 0.0],
+            [1.0, -3.0, 2.0],
+            [0.0, 2.0, 5.0],
+        ])
+        A_upper = sp.csr_matrix(np.triu(A_full))
+        A_upper.sort_indices()
+
+        solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_INDEF)
+        _set_pattern_from_csr(solver, A_upper)
+        solver.factor(A_upper.data.astype(np.float64))
+
+        # Error recovery enables a value-dependent analysis setting, which
+        # requires factor() once, but subsequent refactor() calls should work.
+        solver.set_iparm(10, 1)
+        solver.factor(A_upper.data.astype(np.float64))
+
+        b = np.array([1.0, 2.0, 3.0])
+        for delta in (0.5, 1.0):
+            A2_full = A_full.copy()
+            A2_full[0, 0] += delta
+            A2_full[2, 2] += delta
+            A2_upper = sp.csr_matrix(np.triu(A2_full))
+            A2_upper.sort_indices()
+            solver.set_values(A2_upper.data.astype(np.float64))
+            solver.refactor()
+            x = solver.solve(b)
+            npt.assert_allclose(A2_full @ x, b, atol=1e-6)
 
     def test_iparm_same_value_no_invalidation(self, A4):
         """Setting iparm to its current value should not invalidate."""
