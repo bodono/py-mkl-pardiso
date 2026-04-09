@@ -412,6 +412,12 @@ public:
         double ddum = 0.0;
         Index error = 0;
 
+        std::vector<Index> perm_buf;
+        if (perm_.empty() && n_ > 0) {
+            perm_buf.resize(static_cast<std::size_t>(n_), 0);
+        }
+        Index* p_ptr = perm_.empty() ? perm_buf.data() : perm_.data();
+
         {
             py::gil_scoped_release nogil;
             pardiso_64(
@@ -424,7 +430,7 @@ public:
                 &ddum,
                 ia_.empty() ? &idum : ia_.data(),
                 ja_.empty() ? &idum : ja_.data(),
-                perm_.empty() ? &idum : perm_.data(),
+                p_ptr,
                 &nrhs,
                 iparm_.data(),
                 &msglvl_,
@@ -608,7 +614,14 @@ private:
         double* a_ptr = a_.empty() ? &ddum : a_.data();
         Index* ia_ptr = ia_.empty() ? &idum : ia_.data();
         Index* ja_ptr = ja_.empty() ? &idum : ja_.data();
-        Index* p_ptr = perm_.empty() ? &idum : perm_.data();
+
+        // PARDISO writes the fill-in reducing permutation (size n) to perm
+        // during phase 11, so we must always provide a properly-sized buffer.
+        std::vector<Index> perm_buf;
+        if (perm_.empty() && n_ > 0) {
+            perm_buf.resize(static_cast<std::size_t>(n_), 0);
+        }
+        Index* p_ptr = perm_.empty() ? perm_buf.data() : perm_.data();
 
         {
             py::gil_scoped_release nogil;
