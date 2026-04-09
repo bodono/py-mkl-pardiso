@@ -51,13 +51,19 @@ jobs:
           ASAN_OPTIONS: "detect_leaks=0:halt_on_error=1:intercept_tls_get_addr=0:log_path=/tmp/asan"
         run: |
           ASAN_RT=$(gcc -print-file-name=libasan.so)
+          rm -f /tmp/asan.*
           set +e
-          LD_PRELOAD="$ASAN_RT" pytest -v tests/
+          LD_PRELOAD="$ASAN_RT" python -m pytest -v tests/
           TEST_EXIT=$?
           set -e
+
+          echo "pytest exit code: $TEST_EXIT"
           echo "=== ASAN reports ==="
-          cat /tmp/asan.* 2>/dev/null || echo "No ASAN log files found"
-          if ls /tmp/asan.* 1>/dev/null 2>&1; then exit 1; fi
+          if compgen -G "/tmp/asan.*" > /dev/null; then
+            cat /tmp/asan.*
+            exit 1
+          fi
+          echo "No ASAN log files found"
           exit $TEST_EXIT
 
   valgrind:
