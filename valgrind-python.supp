@@ -1,0 +1,51 @@
+# Suppress Python's own memory management noise under Valgrind.
+# These are false positives from Python's arena allocator and obmalloc.
+
+{
+   python-arena-allocator
+   Memcheck:Addr4
+   ...
+   obj:*/libpython*
+}
+
+{
+   python-arena-allocator-8
+   Memcheck:Addr8
+   ...
+   obj:*/libpython*
+}
+
+{
+   python-value-uninitialized
+   Memcheck:Value8
+   ...
+   obj:*/libpython*
+}
+
+{
+   python-cond-uninitialized
+   Memcheck:Cond
+   ...
+   obj:*/libpython*
+}
+
+{
+   python-pymalloc
+   Memcheck:Leak
+   ...
+   obj:*/libpython*
+}
+
+{
+   numpy-uninitialized
+   Memcheck:Value8
+   ...
+   obj:*/numpy*
+}
+
+{
+   numpy-cond
+   Memcheck:Cond
+   ...
+   obj:*/numpy*
+}

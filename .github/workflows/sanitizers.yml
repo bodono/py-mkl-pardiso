@@ -1,0 +1,92 @@
+name: Sanitizers
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  asan:
+    name: AddressSanitizer
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Conda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          python-version: "3.12"
+          activate-environment: test
+          channels: conda-forge
+          channel-priority: strict
+
+      - name: Install MKL
+        run: conda install -y mkl-devel
+
+      - name: Set MKLROOT
+        run: echo "MKLROOT=$CONDA_PREFIX" >> $GITHUB_ENV
+
+      - name: Install with ASAN
+        env:
+          # Inject AddressSanitizer flags into the C++ build.
+          CFLAGS: "-fsanitize=address -fno-omit-frame-pointer -g"
+          CXXFLAGS: "-fsanitize=address -fno-omit-frame-pointer -g"
+          LDFLAGS: "-fsanitize=address"
+        run: pip install -e ".[test]" -v
+
+      - name: Run tests under ASAN
+        env:
+          # Preload ASAN runtime for Python subprocess.
+          LD_PRELOAD: /usr/lib/x86_64-linux-gnu/libasan.so.8
+          ASAN_OPTIONS: "detect_leaks=0:halt_on_error=1:print_legend=1"
+          # LSAN disabled — Python's allocator triggers false positives.
+        run: pytest -v tests/
+
+  valgrind:
+    name: Valgrind memcheck
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Conda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          python-version: "3.12"
+          activate-environment: test
+          channels: conda-forge
+          channel-priority: strict
+
+      - name: Install MKL and Valgrind
+        run: |
+          conda install -y mkl-devel
+          sudo apt-get update && sudo apt-get install -y valgrind
+
+      - name: Set MKLROOT
+        run: echo "MKLROOT=$CONDA_PREFIX" >> $GITHUB_ENV
+
+      - name: Install with debug symbols
+        env:
+          CFLAGS: "-g -O1"
+          CXXFLAGS: "-g -O1"
+        run: pip install -e ".[test]" -v
+
+      - name: Run tests under Valgrind
+        run: |
+          valgrind \
+            --tool=memcheck \
+            --leak-check=no \
+            --track-origins=yes \
+            --error-exitcode=1 \
+            --suppressions=valgrind-python.supp \
+            python -m pytest -v tests/ 2>&1 | tail -100
+        # Valgrind is slow; use a generous timeout.
+        timeout-minutes: 30
