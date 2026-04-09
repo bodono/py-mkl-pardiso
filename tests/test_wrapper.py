@@ -123,6 +123,19 @@ class TestSolve:
         solver4.solve_into(B, X)
         npt.assert_allclose(A_full @ X, B, atol=1e-12)
 
+    def test_solve_into_rejects_non_float64_output(self, solver4):
+        b = np.ones(4)
+        x = np.zeros(4, dtype=np.float32)
+        with pytest.raises(ValueError, match="float64"):
+            solver4.solve_into(b, x)
+
+    def test_solve_into_rejects_readonly_output(self, solver4):
+        b = np.ones(4)
+        x = np.zeros(4)
+        x.setflags(write=False)
+        with pytest.raises(ValueError, match="writable"):
+            solver4.solve_into(b, x)
+
 
 # ---------------------------------------------------------------------------
 # Refactor (phase 22 only)

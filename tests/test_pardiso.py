@@ -173,6 +173,19 @@ class TestSolveInto:
         with pytest.raises(ValueError, match="Fortran-contiguous"):
             solver4.solve_into(B, X)
 
+    def test_solve_into_rejects_non_float64_output(self, solver4):
+        b = np.ones(4)
+        x = np.zeros(4, dtype=np.float32)
+        with pytest.raises(ValueError, match="float64"):
+            solver4.solve_into(b, x)
+
+    def test_solve_into_rejects_readonly_output(self, solver4):
+        b = np.ones(4)
+        x = np.zeros(4)
+        x.setflags(write=False)
+        with pytest.raises(ValueError, match="writable"):
+            solver4.solve_into(b, x)
+
     def test_solve_into_rejects_rank_mismatch(self, solver4):
         """b and x must have the same rank."""
         b = np.ones(4)
@@ -1131,6 +1144,19 @@ class TestRunPhaseInto:
         X = np.zeros((4, 2))
         with pytest.raises(ValueError, match="Fortran-contiguous"):
             solver4.run_phase_into(33, B, X)
+
+    def test_run_phase_into_rejects_non_float64_output(self, solver4):
+        b = np.ones(4)
+        x = np.zeros(4, dtype=np.float32)
+        with pytest.raises(ValueError, match="float64"):
+            solver4.run_phase_into(33, b, x)
+
+    def test_run_phase_into_rejects_readonly_output(self, solver4):
+        b = np.ones(4)
+        x = np.zeros(4)
+        x.setflags(write=False)
+        with pytest.raises(ValueError, match="writable"):
+            solver4.run_phase_into(33, b, x)
 
     def test_run_phase_into_rejects_rank_mismatch(self, solver4):
         b = np.ones(4)
