@@ -58,7 +58,12 @@ def find_mkl():
     )
 
 
-mkl_include, mkl_libdir = find_mkl()
+# MKL is required at compile time but not for sdist creation.
+try:
+    mkl_include, mkl_libdir = find_mkl()
+except RuntimeError:
+    mkl_include = ""
+    mkl_libdir = ""
 
 # ILP64 interface (64-bit integers) -- matches MKL_INT64 / pardiso_64 in C++ source.
 define_macros = [("MKL_ILP64", None)]

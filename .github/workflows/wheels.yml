@@ -39,7 +39,7 @@ jobs:
           CIBW_BEFORE_ALL_LINUX: >
             curl -fsSL https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh -o /tmp/miniforge.sh &&
             bash /tmp/miniforge.sh -b -p /opt/mkl &&
-            /opt/mkl/bin/conda install -y -p /opt/mkl mkl-devel
+            /opt/mkl/bin/conda install -y -p /opt/mkl mkl-devel mkl-static
 
           CIBW_ENVIRONMENT_LINUX: >
             MKLROOT=/opt/mkl
