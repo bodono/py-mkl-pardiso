@@ -285,7 +285,17 @@ public:
     void refactor() {
         ensure_pattern();
         ensure_values();
-        factor_loaded_values();
+        if (!analyzed_) {
+            call_pardiso(/*phase=*/11, /*nrhs=*/1, nullptr, nullptr);
+            analyzed_ = true;
+        }
+        call_pardiso(/*phase=*/22, /*nrhs=*/1, nullptr, nullptr);
+        factored_ = true;
+    }
+
+    void refactor_values(py::array_t<double, py::array::c_style | py::array::forcecast> a) {
+        set_values(a);
+        refactor();
     }
 
     py::array_t<double> solve(py::array_t<double, py::array::forcecast> b) {
@@ -731,8 +741,13 @@ If symbolic analysis has not been run yet, it is run automatically first.
 )doc")
         .def("refactor", &PardisoSolver::refactor,
              R"doc(
-Refactor using the currently loaded numeric values.
-Useful after set_values(a) when the sparsity pattern is unchanged.
+Refactor using the currently loaded numeric values (phase 22 only).
+Does not re-run symbolic analysis. Use factor(a) to re-analyze.
+)doc")
+        .def("refactor_values", &PardisoSolver::refactor_values, py::arg("a"),
+             R"doc(
+Set new numeric values and refactor (phase 22 only).
+Equivalent to set_values(a) followed by refactor().
 )doc")
 
         .def("solve", &PardisoSolver::solve, py::arg("b"))

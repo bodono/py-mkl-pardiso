@@ -46,29 +46,39 @@ A_full = np.array([
 A_upper = sp.csr_matrix(np.triu(A_full))
 A_upper.sort_indices()
 
-# Create solver, set pattern, factor, solve
-solver = PardisoSolver(MTYPE_REAL_SYM_POSDEF)
-solver.set_pattern(
-    ia=A_upper.indptr.astype(np.int64),
-    ja=A_upper.indices.astype(np.int64),
-    n=A_upper.shape[0],
-)
-solver.factor(A_upper.data.astype(np.float64))
+# Create solver — analyzes, factors, and is ready to solve
+solver = PardisoSolver(A_upper, MTYPE_REAL_SYM_POSDEF)
 
 b = np.array([1.0, 2.0])
 x = solver.solve(b)
 print(x)  # [0.09090909 0.63636364]
 ```
 
+### Refactoring workflow
+
+When the sparsity pattern stays the same but values change (e.g., in an
+iterative algorithm), use `refactor()` to skip symbolic analysis:
+
+```python
+solver = PardisoSolver(A_upper, MTYPE_REAL_SYM_POSDEF)
+for new_values in value_generator:
+    solver.refactor(new_values)
+    x = solver.solve(b)
+```
+
 ## API reference
 
-### `PardisoSolver(mtype, msglvl=0)`
+### `PardisoSolver(A, mtype, iparms=None, msglvl=0)`
 
-Create a PARDISO solver instance.
+Create a PARDISO solver instance.  The constructor extracts the CSR sparsity
+pattern from `A`, applies any `iparms` overrides, and runs symbolic analysis
++ numeric factorization so the solver is ready to call `solve()`.
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
+| `A` | sparse CSR | *(required)* | Sparse matrix (any object with `indptr`, `indices`, `data`, `shape`). For symmetric types, pass only the upper triangle. |
 | `mtype` | `int` | *(required)* | Matrix type (see constants below). |
+| `iparms` | `dict` | `None` | Optional `{index: value}` iparm overrides. |
 | `msglvl` | `int` | `0` | Message level (0 = silent, 1 = print statistics). |
 
 ### Matrix type constants
@@ -82,18 +92,6 @@ Create a PARDISO solver instance.
 
 ### Core methods
 
-**`solver.set_pattern(ia, ja, n, check_sorted=True)`**
-Set the CSR sparsity pattern. Uses zero-based indexing. Column indices must
-be sorted within each row (unless `check_sorted=False`). For symmetric
-positive definite and symmetric indefinite types, pass only the upper
-triangle. For structurally symmetric and nonsymmetric types, pass the full
-matrix.
-
-**`solver.factor(a)`**
-Set the nonzero values of the CSR matrix (i.e., `A_csr.data`) and factorize.
-`a` must be a 1D array of length `nnz` matching the sparsity pattern from
-`set_pattern()`. Runs symbolic analysis automatically if needed.
-
 **`solver.solve(b)`**
 Solve `Ax = b`. Accepts 1D `(n,)` or 2D `(n, nrhs)` arrays. Returns the
 solution as a new NumPy array (Fortran-contiguous for 2D).
@@ -102,32 +100,22 @@ solution as a new NumPy array (Fortran-contiguous for 2D).
 Solve `Ax = b` writing into pre-allocated `x`. For 2D arrays, both `b` and
 `x` must be Fortran-contiguous.
 
-### Refactoring workflow
+**`solver.refactor(values)`**
+Re-factorize with new nonzero values (phase 22 only). Does not re-run
+symbolic analysis. Use `factor()` to re-analyze from scratch.
 
-**`solver.set_values(a)`**
-Load new nonzero values (i.e., `A_csr.data`) for the same sparsity pattern.
-`a` must be a 1D array of length `nnz`.
-
-**`solver.refactor()`**
-Re-factorize using the currently loaded values.
-
-```python
-for new_values in value_generator:
-    solver.set_values(new_values)
-    solver.refactor()
-    x = solver.solve(b)
-```
+**`solver.factor(values)`**
+Re-analyze and re-factorize with new values (phases 11 + 22). Use this for
+error recovery or when iparm changes require fresh symbolic analysis.
 
 ### Other methods
 
 | Method | Description |
 |---|---|
-| `solver.analyze()` | Run symbolic analysis (phase 11) explicitly. |
 | `solver.release()` | Free PARDISO internal memory. |
-| `solver.reset()` | Release and clear all state. |
-| `solver.n()` | Matrix dimension. |
-| `solver.nnz()` | Number of nonzeros in the sparsity pattern. |
-| `solver.mtype()` | Matrix type. |
+| `solver.n` | Matrix dimension (property). |
+| `solver.nnz` | Number of nonzeros (property). |
+| `solver.mtype` | Matrix type (property). |
 | `solver.set_perm(perm)` | Set fill-reducing permutation. |
 | `solver.clear_perm()` | Clear permutation. |
 | `solver.has_perm()` | Whether a permutation is set. |
