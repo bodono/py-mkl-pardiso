@@ -349,11 +349,14 @@ public:
     }
 
     void solve_into(
-        py::array_t<double, py::array::forcecast> b,
-        py::array_t<double, py::array::forcecast> x
+        py::array b_in,
+        py::array x
     ) {
         ensure_factored();
 
+        auto b = py::array_t<double, py::array::forcecast>(b_in);
+        ensure_double_dtype(x, "x");
+        ensure_writable(x, "x");
         const Index nrhs = validate_rhs_pair(b, x);
 
         // For multi-RHS, PARDISO expects column-major layout.
@@ -387,14 +390,17 @@ public:
 
     void run_phase_into(
         Index phase,
-        py::array_t<double, py::array::forcecast> b,
-        py::array_t<double, py::array::forcecast> x
+        py::array b_in,
+        py::array x
     ) {
         if (phase == -1) {
             throw_value_error("use release() for phase -1");
         }
 
         ensure_pattern();
+        auto b = py::array_t<double, py::array::forcecast>(b_in);
+        ensure_double_dtype(x, "x");
+        ensure_writable(x, "x");
         const Index nrhs = validate_rhs_pair(b, x);
         validate_common_preconditions(phase);
 
@@ -538,6 +544,18 @@ private:
         }
     }
 
+    static void ensure_double_dtype(const py::array& arr, const char* name) {
+        if (!py::isinstance<py::array_t<double>>(arr)) {
+            throw_value_error(std::string(name) + " must have dtype float64");
+        }
+    }
+
+    static void ensure_writable(const py::array& arr, const char* name) {
+        if (!arr.writeable()) {
+            throw_value_error(std::string(name) + " must be writable");
+        }
+    }
+
     bool analysis_depends_on_values() const {
         // Common value-dependent analysis options in MKL PARDISO.
         return iparm_[10] != 0 || iparm_[12] != 0;
@@ -586,8 +604,8 @@ private:
     }
 
     Index validate_rhs_pair(
-        const py::array_t<double, py::array::forcecast>& b,
-        const py::array_t<double, py::array::forcecast>& x
+        const py::array& b,
+        const py::array& x
     ) const {
         if (b.ndim() != x.ndim()) {
             throw_value_error("b and x must have the same rank");
