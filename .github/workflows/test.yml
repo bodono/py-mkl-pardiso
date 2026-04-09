@@ -30,7 +30,12 @@ jobs:
           channels: conda-forge,defaults
 
       - name: Install MKL
-        run: conda install -y mkl-devel mkl-static
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            conda install -y mkl-devel mkl-static
+          else
+            conda install -y mkl-devel
+          fi
 
       - name: Set MKLROOT
         run: |

@@ -594,7 +594,7 @@ class TestMtype:
         assert solver.mtype() == pymklpardiso.MTYPE_REAL_SYM_POSDEF
 
     def test_mtype_values(self):
-        assert pymklpardiso.MTYPE_REAL_STRUCT_SYM == -1
+        assert pymklpardiso.MTYPE_REAL_STRUCT_SYM == 1
         assert pymklpardiso.MTYPE_REAL_SYM_INDEF == -2
         assert pymklpardiso.MTYPE_REAL_SYM_POSDEF == 2
         assert pymklpardiso.MTYPE_REAL_NONSYM == 11
