@@ -50,17 +50,5 @@ jobs:
       - name: Install package
         run: pip install -e ".[test]"
 
-      - name: Verify PARDISO works
-        run: |
-          python -c "
-          import pymklpardiso, numpy as np
-          s = pymklpardiso.PardisoSolver(2)
-          s.set_pattern(np.array([0,1], dtype=np.int64), np.array([0], dtype=np.int64), 1)
-          s.factor(np.array([4.0]))
-          x = s.solve(np.array([2.0]))
-          assert abs(x[0] - 0.5) < 1e-12, f'expected 0.5, got {x[0]}'
-          print('PARDISO OK')
-          "
-
       - name: Run tests
         run: pytest -v tests/

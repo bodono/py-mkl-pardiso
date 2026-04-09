@@ -73,7 +73,7 @@ Create a PARDISO solver instance.
 
 | Constant | Value | Description |
 |---|---|---|
-| `MTYPE_REAL_STRUCT_SYM` | -1 | Real structurally symmetric |
+| `MTYPE_REAL_STRUCT_SYM` | 1 | Real structurally symmetric |
 | `MTYPE_REAL_SYM_POSDEF` | 2 | Real symmetric positive definite |
 | `MTYPE_REAL_SYM_INDEF` | -2 | Real symmetric indefinite |
 | `MTYPE_REAL_NONSYM` | 11 | Real nonsymmetric |
@@ -86,8 +86,9 @@ be sorted within each row (unless `check_sorted=False`). For symmetric types,
 pass only the upper triangle.
 
 **`solver.factor(a)`**
-Set numeric values and factorize. Runs symbolic analysis automatically if
-needed.
+Set the nonzero values of the CSR matrix (i.e., `A_csr.data`) and factorize.
+`a` must be a 1D array of length `nnz` matching the sparsity pattern from
+`set_pattern()`. Runs symbolic analysis automatically if needed.
 
 **`solver.solve(b)`**
 Solve `Ax = b`. Accepts 1D `(n,)` or 2D `(n, nrhs)` arrays. Returns the
@@ -100,7 +101,8 @@ Solve `Ax = b` writing into pre-allocated `x`. For 2D arrays, both `b` and
 ### Refactoring workflow
 
 **`solver.set_values(a)`**
-Load new numeric values (same sparsity pattern).
+Load new nonzero values (i.e., `A_csr.data`) for the same sparsity pattern.
+`a` must be a 1D array of length `nnz`.
 
 **`solver.refactor()`**
 Re-factorize using the currently loaded values.
@@ -137,12 +139,6 @@ for new_values in value_generator:
 - `iparm[0]` is locked to `1` (user-supplied parameters).
 - `iparm[34]` is locked to `1` (zero-based indexing).
 - See the [MKL PARDISO iparm documentation](https://www.intel.com/content/www/us/en/docs/onemkl/developer-reference-c/2025-0/pardiso-iparm-parameter.html) for all parameters.
-
-## Benchmarking
-
-```bash
-python benchmarks/refactor_benchmark.py --n 2000 --density 0.002 --iterations 25
-```
 
 ## License
 
