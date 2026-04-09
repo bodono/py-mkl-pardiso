@@ -73,7 +73,7 @@ Create a PARDISO solver instance.
 
 | Constant | Value | Description |
 |---|---|---|
-| `MTYPE_REAL_STRUCT_SYM` | -1 | Real structurally symmetric |
+| `MTYPE_REAL_STRUCT_SYM` | 1 | Real structurally symmetric |
 | `MTYPE_REAL_SYM_POSDEF` | 2 | Real symmetric positive definite |
 | `MTYPE_REAL_SYM_INDEF` | -2 | Real symmetric indefinite |
 | `MTYPE_REAL_NONSYM` | 11 | Real nonsymmetric |
@@ -137,12 +137,6 @@ for new_values in value_generator:
 - `iparm[0]` is locked to `1` (user-supplied parameters).
 - `iparm[34]` is locked to `1` (zero-based indexing).
 - See the [MKL PARDISO iparm documentation](https://www.intel.com/content/www/us/en/docs/onemkl/developer-reference-c/2025-0/pardiso-iparm-parameter.html) for all parameters.
-
-## Benchmarking
-
-```bash
-python benchmarks/refactor_benchmark.py --n 2000 --density 0.002 --iterations 25
-```
 
 ## License
 
