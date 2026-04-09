@@ -247,11 +247,6 @@ public:
 
         values_set_ = true;
         factored_ = false;
-
-        // If phase 1 depends on values, changing values invalidates previous analysis.
-        if (analysis_depends_on_values()) {
-            analyzed_ = false;
-        }
     }
 
     void set_perm(py::array_t<Index, py::array::c_style | py::array::forcecast> perm) {
@@ -291,8 +286,9 @@ public:
         ensure_pattern();
         ensure_values();
         if (!analyzed_) {
-            call_pardiso(/*phase=*/11, /*nrhs=*/1, nullptr, nullptr);
-            analyzed_ = true;
+            throw_runtime_error(
+                "symbolic analysis is invalid; call factor(a) to re-analyze and factor"
+            );
         }
         call_pardiso(/*phase=*/22, /*nrhs=*/1, nullptr, nullptr);
         factored_ = true;
@@ -610,12 +606,8 @@ private:
 
     void factor_loaded_values() {
         ensure_values();
-
-        if (!analyzed_ || analysis_depends_on_values()) {
-            call_pardiso(/*phase=*/11, /*nrhs=*/1, nullptr, nullptr);
-            analyzed_ = true;
-        }
-
+        call_pardiso(/*phase=*/11, /*nrhs=*/1, nullptr, nullptr);
+        analyzed_ = true;
         call_pardiso(/*phase=*/22, /*nrhs=*/1, nullptr, nullptr);
         factored_ = true;
     }
@@ -771,13 +763,14 @@ Notes:
         .def("analyze", &PardisoSolver::analyze)
         .def("factor", &PardisoSolver::factor, py::arg("a"),
              R"doc(
-Set numeric values and perform numerical factorization.
-If symbolic analysis has not been run yet, it is run automatically first.
+Set numeric values, run symbolic analysis, and perform numerical factorization.
+This always performs phases 11 + 22.
 )doc")
         .def("refactor", &PardisoSolver::refactor,
              R"doc(
 Refactor using the currently loaded numeric values (phase 22 only).
-Does not re-run symbolic analysis. Use factor(a) to re-analyze.
+Does not re-run symbolic analysis. Raises if analysis is invalid; use factor(a)
+to re-analyze and factor.
 )doc")
         .def("refactor_values", &PardisoSolver::refactor_values, py::arg("a"),
              R"doc(

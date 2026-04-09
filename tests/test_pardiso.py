@@ -263,6 +263,14 @@ class TestRefactor:
             x = solver.solve(b)
             npt.assert_allclose(A_mod @ x, b, atol=1e-12)
 
+    def test_refactor_requires_prior_analysis(self, A4):
+        _, A_upper = A4
+        solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_POSDEF)
+        _set_pattern_from_csr(solver, A_upper)
+        solver.set_values(A_upper.data.astype(np.float64))
+        with pytest.raises(RuntimeError, match="call factor"):
+            solver.refactor()
+
 
 # ---------------------------------------------------------------------------
 # Matrix types
@@ -1566,21 +1574,86 @@ class TestIparmPersistence:
 
 class TestIparmInvalidation:
     def test_iparm_change_invalidates_handle(self, A4):
-        """Changing an iparm value after analysis should invalidate and re-analyze."""
+        """Changing an iparm value after analysis should invalidate refactor()."""
+        _, A_upper = A4
+        solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_POSDEF)
+        _set_pattern_from_csr(solver, A_upper)
+        solver.factor(A_upper.data.astype(np.float64))
+
+        # Change iparm[7] (iterative refinement) — should invalidate analysis
+        solver.set_iparm(7, 2)
+
+        solver.set_values(A_upper.data.astype(np.float64))
+        with pytest.raises(RuntimeError, match="call factor"):
+            solver.refactor()
+
+    def test_factor_recovers_after_iparm_invalidation(self, A4):
         A_full, A_upper = A4
         solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_POSDEF)
         _set_pattern_from_csr(solver, A_upper)
         solver.factor(A_upper.data.astype(np.float64))
 
-        # Change iparm[7] (iterative refinement) — should trigger re-analysis
         solver.set_iparm(7, 2)
+        solver.factor(A_upper.data.astype(np.float64))
 
-        # Re-factor and solve should still produce correct results
-        solver.set_values(A_upper.data.astype(np.float64))
-        solver.refactor()
         b = np.array([1.0, 2.0, 3.0, 4.0])
         x = solver.solve(b)
         npt.assert_allclose(A_full @ x, b, atol=1e-12)
+
+    def test_refactor_requires_reanalysis_after_value_dependent_iparm_change(self):
+        A_full = np.array([
+            [4.0, 1.0, 0.0],
+            [1.0, -3.0, 2.0],
+            [0.0, 2.0, 5.0],
+        ])
+        A_upper = sp.csr_matrix(np.triu(A_full))
+        A_upper.sort_indices()
+
+        solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_INDEF)
+        _set_pattern_from_csr(solver, A_upper)
+        solver.factor(A_upper.data.astype(np.float64))
+
+        # Changing to a value-dependent analysis setting invalidates the
+        # previous analysis until factor() re-runs phase 11.
+        solver.set_iparm(10, 1)
+
+        A2_full = A_full.copy()
+        A2_full[0, 0] += 1.0
+        A2_upper = sp.csr_matrix(np.triu(A2_full))
+        A2_upper.sort_indices()
+        solver.set_values(A2_upper.data.astype(np.float64))
+        with pytest.raises(RuntimeError, match="call factor"):
+            solver.refactor()
+
+    def test_factor_recovery_preserves_refactor_for_value_dependent_analysis(self):
+        A_full = np.array([
+            [4.0, 1.0, 0.0],
+            [1.0, -3.0, 2.0],
+            [0.0, 2.0, 5.0],
+        ])
+        A_upper = sp.csr_matrix(np.triu(A_full))
+        A_upper.sort_indices()
+
+        solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_INDEF)
+        _set_pattern_from_csr(solver, A_upper)
+        solver.factor(A_upper.data.astype(np.float64))
+
+        # Error recovery enables a value-dependent analysis setting, which
+        # requires factor() once, but subsequent refactor() calls should work.
+        solver.set_iparm(10, 1)
+        solver.factor(A_upper.data.astype(np.float64))
+
+        b = np.array([1.0, 2.0, 3.0])
+        for delta in (0.5, 1.0):
+            A2_full = A_full.copy()
+            A2_full[0, 0] += delta
+            A2_full[2, 2] += delta
+            A2_upper = sp.csr_matrix(np.triu(A2_full))
+            A2_upper.sort_indices()
+            solver.set_values(A2_upper.data.astype(np.float64))
+            solver.refactor()
+            x = solver.solve(b)
+            npt.assert_allclose(A2_full @ x, b, atol=1e-6)
 
     def test_iparm_same_value_no_invalidation(self, A4):
         """Setting iparm to its current value should not invalidate."""

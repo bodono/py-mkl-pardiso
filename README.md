@@ -102,13 +102,23 @@ Solve `Ax = b` writing into pre-allocated `x`. For 2D arrays, both `b` and
 
 **`solver.refactor(values)`**
 Re-factorize with new nonzero values (phase 22 only). Does not re-run
-symbolic analysis. Use `factor()` to re-analyze from scratch. `values` must
-match the stored sparsity pattern exactly.
+symbolic analysis. Raises if symbolic analysis is invalid; use `factor()` to
+re-analyze from scratch. `values` must match the stored sparsity pattern
+exactly.
 
 **`solver.factor(values)`**
-Re-analyze and re-factorize with new values (phases 11 + 22). Use this for
-error recovery or when iparm changes require fresh symbolic analysis. `values`
-must match the stored sparsity pattern exactly.
+Re-analyze and re-factorize with new values (phases 11 + 22). This always runs
+fresh symbolic analysis. Use this for error recovery or when iparm changes
+require fresh symbolic analysis. `values` must match the stored sparsity
+pattern exactly.
+
+Analysis invalidation: symbolic analysis (phase 11) becomes invalid when an
+`iparm` value changes via `set_iparm()` or `set_iparm_all()`, or after
+`release()` / `reset()`. Changing numeric values alone does not invalidate
+analysis. After a successful `factor()`, subsequent `refactor()` calls
+continue to work, including with value-dependent analysis settings such as
+`iparm[10] = 1`. When analysis is invalid, `refactor()` raises; call
+`factor()` to re-analyze and recover.
 
 ### Other methods
 
