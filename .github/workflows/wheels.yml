@@ -28,10 +28,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build wheels
-        uses: pypa/cibuildwheel@v2.21
+        uses: pypa/cibuildwheel@v3.4
         env:
           CIBW_ARCHS: x86_64
-          CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-* cp314-*"
+          CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-* cp314-* cp314t-*"
           CIBW_SKIP: "pp* *-musllinux*"
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
 
@@ -72,10 +72,10 @@ jobs:
           echo "MKL_PREFIX=$CONDA_PREFIX/Library" >> $GITHUB_ENV
 
       - name: Build wheels
-        uses: pypa/cibuildwheel@v2.21
+        uses: pypa/cibuildwheel@v3.4
         env:
           CIBW_ARCHS: AMD64
-          CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-* cp314-*"
+          CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-* cp314-* cp314t-*"
           CIBW_SKIP: "pp*"
 
           CIBW_ENVIRONMENT_WINDOWS: >
