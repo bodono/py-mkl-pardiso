@@ -25,17 +25,20 @@ jobs:
           channels: conda-forge
           channel-priority: strict
 
-      - name: Install MKL and compiler
-        run: conda install -y mkl-devel compilers
+      - name: Install MKL
+        run: conda install -y mkl-devel
 
       - name: Set MKLROOT
         run: echo "MKLROOT=$CONDA_PREFIX" >> $GITHUB_ENV
 
       - name: Install with ASAN
         env:
+          # Use system compiler (not conda's) so ASAN flags work.
+          CC: gcc
+          CXX: g++
           CFLAGS: "-fsanitize=address -fno-omit-frame-pointer -g"
           CXXFLAGS: "-fsanitize=address -fno-omit-frame-pointer -g"
-          LDFLAGS: "-fsanitize=address -shared-libasan"
+          LDFLAGS: "-fsanitize=address"
         run: |
           pip install pybind11 setuptools
           pip install -e ".[test]" -v --no-build-isolation
@@ -44,10 +47,9 @@ jobs:
         env:
           ASAN_OPTIONS: "detect_leaks=0:halt_on_error=1:print_legend=1"
         run: |
-          # Find the libasan.so that matches the compiler we built with.
-          ASAN_LIB=$(gcc -print-file-name=libasan.so)
-          echo "Preloading $ASAN_LIB"
-          LD_PRELOAD="$ASAN_LIB" pytest -v tests/
+          # Preload the ASAN runtime that matches the system gcc.
+          ASAN_RT=$(gcc -print-file-name=libasan.so)
+          LD_PRELOAD="$ASAN_RT" pytest -v tests/
 
   valgrind:
     name: Valgrind memcheck
