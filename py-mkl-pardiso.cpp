@@ -739,7 +739,7 @@ For phase -1, use release().
         .def("release", &PardisoSolver::release);
 
     // Common real-valued matrix types.
-    m.attr("MTYPE_REAL_STRUCT_SYM") = py::int_(-1);
+    m.attr("MTYPE_REAL_STRUCT_SYM") = py::int_(1);
     m.attr("MTYPE_REAL_SYM_INDEF")  = py::int_(-2);
     m.attr("MTYPE_REAL_SYM_POSDEF") = py::int_(2);
     m.attr("MTYPE_REAL_NONSYM")     = py::int_(11);

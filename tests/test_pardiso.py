@@ -335,18 +335,18 @@ class TestPatternValues:
         solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_POSDEF)
         with pytest.raises(ValueError, match="sorted"):
             solver.set_pattern(
-                ia=np.array([0, 2], dtype=np.int64),
-                ja=np.array([1, 0], dtype=np.int64),  # unsorted
-                n=1,
+                ia=np.array([0, 2, 2], dtype=np.int64),
+                ja=np.array([1, 0], dtype=np.int64),  # unsorted within row 0
+                n=2,
             )
 
     def test_set_pattern_unsorted_allowed_if_check_disabled(self):
         solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_POSDEF)
         # Should not raise when check_sorted=False
         solver.set_pattern(
-            ia=np.array([0, 2], dtype=np.int64),
+            ia=np.array([0, 2, 2], dtype=np.int64),
             ja=np.array([1, 0], dtype=np.int64),
-            n=1,
+            n=2,
             check_sorted=False,
         )
 
