@@ -5,6 +5,8 @@ import scipy.sparse as sp
 
 import pymklpardiso._mkl_pardiso as pymklpardiso
 
+asan_unsafe = pytest.mark.asan_unsafe
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -150,6 +152,7 @@ class TestSolve2D:
 # solve_into
 # ---------------------------------------------------------------------------
 
+@asan_unsafe
 class TestSolveInto:
     def test_solve_into_1d(self, solver4, A4):
         A_full, _ = A4
@@ -377,6 +380,7 @@ class TestMatrixTypes:
 # iparm access
 # ---------------------------------------------------------------------------
 
+@asan_unsafe
 class TestIparm:
     def test_get_iparm(self):
         solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_POSDEF)
@@ -478,6 +482,7 @@ class TestIparm:
 # Pattern and value management
 # ---------------------------------------------------------------------------
 
+@asan_unsafe
 class TestPatternValues:
     def test_set_pattern(self, A4):
         _, A_upper = A4
@@ -678,6 +683,7 @@ class TestPatternValues:
 # Permutation
 # ---------------------------------------------------------------------------
 
+@asan_unsafe
 class TestPerm:
     def test_set_and_clear_perm(self, A4):
         _, A_upper = A4
@@ -721,6 +727,7 @@ class TestPerm:
 # State machine errors
 # ---------------------------------------------------------------------------
 
+@asan_unsafe
 class TestStateErrors:
     def test_solve_before_factor(self):
         solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_POSDEF)
@@ -805,6 +812,7 @@ class TestStateErrors:
 # Validation on solve
 # ---------------------------------------------------------------------------
 
+@asan_unsafe
 class TestSolveValidation:
     def test_rejects_wrong_rhs_length(self, solver4):
         with pytest.raises(ValueError, match="length n"):
@@ -976,6 +984,7 @@ class TestEdgeCases:
 # Reset and release
 # ---------------------------------------------------------------------------
 
+@asan_unsafe
 class TestResetRelease:
     def test_release_and_refactor(self, A4):
         A_full, A_upper = A4
@@ -1058,6 +1067,7 @@ class TestResetRelease:
 # run_phase
 # ---------------------------------------------------------------------------
 
+@asan_unsafe
 class TestRunPhase:
     def test_analyze_factor_solve_phases(self, A4):
         A_full, A_upper = A4
@@ -1136,6 +1146,7 @@ class TestRunPhase:
 # run_phase_into
 # ---------------------------------------------------------------------------
 
+@asan_unsafe
 class TestRunPhaseInto:
     def test_solve_phase_into_1d(self, A4):
         """Use run_phase_into for phase 33 (solve) with 1D arrays."""
@@ -1291,6 +1302,7 @@ class TestNAccessor:
 # Perm with iparm[30]/iparm[35] enforcement
 # ---------------------------------------------------------------------------
 
+@asan_unsafe
 class TestPermIparmEnforcement:
     def test_iparm30_requires_perm(self):
         """iparm[30]=1 requires perm to be set."""
@@ -1323,6 +1335,7 @@ class TestPermIparmEnforcement:
 # Full lifecycle / integration
 # ---------------------------------------------------------------------------
 
+@asan_unsafe
 class TestLifecycle:
     def test_full_spd_lifecycle(self):
         """Complete lifecycle: create, pattern, factor, solve, refactor, solve, release."""
@@ -1424,6 +1437,7 @@ class TestLifecycle:
 # Constructor validation
 # ---------------------------------------------------------------------------
 
+@asan_unsafe
 class TestConstructorValidation:
     def test_invalid_mtype_rejected(self):
         with pytest.raises(ValueError, match="mtype"):

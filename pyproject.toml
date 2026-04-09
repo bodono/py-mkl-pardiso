@@ -32,6 +32,9 @@ test = ["pytest", "scipy"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "asan_unsafe: exercises exception-heavy paths that are skipped under ASAN",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]

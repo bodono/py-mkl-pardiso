@@ -13,6 +13,8 @@ from pymklpardiso import (
     PardisoSolver,
 )
 
+asan_unsafe = pytest.mark.asan_unsafe
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -63,6 +65,7 @@ def solver4(A4):
 # Constructor
 # ---------------------------------------------------------------------------
 
+@asan_unsafe
 class TestConstructor:
     def test_basic_construction(self, A4):
         A_full, A_upper = A4
@@ -105,6 +108,7 @@ class TestConstructor:
 # Solve
 # ---------------------------------------------------------------------------
 
+@asan_unsafe
 class TestSolve:
     def test_solve_1d(self, solver4, A4):
         A_full, _ = A4
@@ -152,6 +156,7 @@ class TestSolve:
 # Refactor (phase 22 only)
 # ---------------------------------------------------------------------------
 
+@asan_unsafe
 class TestRefactor:
     def test_refactor_correctness(self, solver4, A4):
         A_full, _ = A4
@@ -348,6 +353,7 @@ class TestProperties:
 # Release
 # ---------------------------------------------------------------------------
 
+@asan_unsafe
 class TestRelease:
     def test_release(self, solver4):
         solver4.release()
