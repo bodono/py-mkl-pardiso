@@ -548,6 +548,24 @@ class TestPatternValues:
                 n=1,
             )
 
+    def test_set_pattern_negative_interior_ia_entry(self):
+        solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_POSDEF)
+        with pytest.raises(ValueError, match="nonnegative"):
+            solver.set_pattern(
+                ia=np.array([0, -1, -1], dtype=np.int64),
+                ja=np.array([], dtype=np.int64),
+                n=2,
+            )
+
+    def test_set_pattern_requires_ia0_zero(self):
+        solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_POSDEF)
+        with pytest.raises(ValueError, match=r"ia\[0\]"):
+            solver.set_pattern(
+                ia=np.array([1, 2], dtype=np.int64),
+                ja=np.array([0], dtype=np.int64),
+                n=1,
+            )
+
     def test_set_pattern_ja_size_mismatch(self):
         """ja length != ia[n] should be rejected."""
         solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_POSDEF)
