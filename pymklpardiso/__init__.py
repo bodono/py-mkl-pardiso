@@ -66,7 +66,8 @@ class PardisoSolver:
         """Re-factorize with new values (same sparsity pattern).
 
         Runs only numeric factorization (phase 22). Does not re-run symbolic
-        analysis. Use factor() to re-analyze from scratch.
+        analysis. Raises if symbolic analysis is invalid; use factor() to
+        re-analyze from scratch.
 
         Values must match the stored sparsity pattern exactly.
         """
@@ -75,8 +76,10 @@ class PardisoSolver:
     def factor(self, values):
         """Re-analyze and re-factorize with new values (phases 11 + 22).
 
-        Use this for error recovery or when iparm changes require fresh
-        symbolic analysis. For normal refactoring, use refactor().
+        This always performs fresh symbolic analysis before numeric
+        factorization. Use this for error recovery or when iparm changes
+        require fresh symbolic analysis. For normal refactoring, use
+        refactor().
 
         Values must match the stored sparsity pattern exactly.
         """
