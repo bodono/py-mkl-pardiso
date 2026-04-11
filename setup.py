@@ -1,7 +1,7 @@
 import os
 import sys
 
-from pybind11.setup_helpers import Pybind11Extension, build_ext
+from pybind11.setup_helpers import Pybind11Extension, build_ext as pybind11_build_ext
 from setuptools import setup
 
 
@@ -28,8 +28,12 @@ def find_mkl():
     if sys.platform == "linux":
         candidates.append("/opt/intel/oneapi/mkl/latest")
     elif sys.platform == "win32":
-        pf = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
-        candidates.append(os.path.join(pf, "Intel", "oneAPI", "mkl", "latest"))
+        for pf_env, default in (
+            ("ProgramFiles", r"C:\Program Files"),
+            ("ProgramFiles(x86)", r"C:\Program Files (x86)"),
+        ):
+            pf = os.environ.get(pf_env, default)
+            candidates.append(os.path.join(pf, "Intel", "oneAPI", "mkl", "latest"))
 
     # On Windows, conda-forge packages install under a Library/ subdirectory.
     if sys.platform == "win32":
@@ -58,47 +62,88 @@ def find_mkl():
     )
 
 
+class build_ext(pybind11_build_ext):
+    """Defer missing-MKL failures until extension build time."""
+
+    def build_extensions(self):
+        if mkl_error is not None:
+            raise RuntimeError(str(mkl_error))
+        super().build_extensions()
+
+
 # MKL is required at compile time but not for sdist creation.
 try:
     mkl_include, mkl_libdir = find_mkl()
-except RuntimeError:
-    mkl_include = ""
-    mkl_libdir = ""
+    mkl_error = None
+except RuntimeError as exc:
+    mkl_include = None
+    mkl_libdir = None
+    mkl_error = exc
 
 # ILP64 interface (64-bit integers) -- matches MKL_INT64 / pardiso_64 in C++ source.
 define_macros = [("MKL_ILP64", None)]
 
-# When PYMKLPARDISO_STATIC=1, statically link MKL so the wheel is
-# self-contained and users don't need MKL installed at runtime.
+# Wheel CI prefers dynamic MKL plus wheel repair so the shared libraries are
+# bundled into the built wheels. Static linking remains available as a local
+# override if needed.
 static = os.environ.get("PYMKLPARDISO_STATIC", "").lower() in ("1", "true", "yes")
 
-if sys.platform == "win32":
-    libraries = ["mkl_intel_ilp64", "mkl_sequential", "mkl_core"]
-    extra_link_args = []
-elif static:
-    # Static linking on Linux: pass full paths to .a archives inside
-    # --start-group / --end-group to resolve circular MKL dependencies.
-    libraries = []
-    _mkl_archives = [
-        os.path.join(mkl_libdir, f"lib{name}.a")
-        for name in ("mkl_intel_ilp64", "mkl_sequential", "mkl_core")
-    ]
-    extra_link_args = (
-        ["-Wl,--start-group"] + _mkl_archives +
-        ["-Wl,--end-group", "-lpthread", "-lm", "-ldl"]
-    )
-else:
-    # Dynamic linking (for local development / testing).
-    libraries = ["mkl_intel_ilp64", "mkl_sequential", "mkl_core", "pthread", "m", "dl"]
-    extra_link_args = [f"-Wl,-rpath,{mkl_libdir}"]
+
+def mkl_lib_paths(*filenames):
+    paths = [os.path.join(mkl_libdir, filename) for filename in filenames]
+    missing = [path for path in paths if not os.path.isfile(path)]
+    if missing:
+        raise RuntimeError(
+            "Could not find the expected MKL libraries:\n" + "\n".join(missing)
+        )
+    return paths
+
+libraries = []
+extra_link_args = []
+if mkl_error is None:
+    try:
+        if sys.platform == "win32":
+            if static:
+                # Link the static oneMKL archives directly so Windows wheels do
+                # not depend on MKL DLLs at runtime.
+                extra_link_args = mkl_lib_paths(
+                    "mkl_intel_ilp64.lib",
+                    "mkl_sequential.lib",
+                    "mkl_core.lib",
+                )
+            else:
+                # Dynamic Windows linkage uses the documented import libraries.
+                # Wheel CI then bundles the corresponding MKL DLLs via delvewheel.
+                libraries = ["mkl_intel_ilp64_dll", "mkl_sequential_dll", "mkl_core_dll"]
+        elif static:
+            # Static linking on Linux: pass full paths to .a archives inside
+            # --start-group / --end-group to resolve circular MKL dependencies.
+            _mkl_archives = mkl_lib_paths(
+                "libmkl_intel_ilp64.a",
+                "libmkl_sequential.a",
+                "libmkl_core.a",
+            )
+            extra_link_args = (
+                ["-Wl,--start-group"] + _mkl_archives +
+                ["-Wl,--end-group", "-lpthread", "-lm", "-ldl"]
+            )
+        else:
+            # Dynamic Linux linkage. Wheel CI bundles the needed MKL shared
+            # libraries into the repaired wheel via auditwheel.
+            libraries = ["mkl_intel_ilp64", "mkl_sequential", "mkl_core", "pthread", "m", "dl"]
+            extra_link_args = [f"-Wl,-rpath,{mkl_libdir}"]
+    except RuntimeError as exc:
+        mkl_error = exc
+        libraries = []
+        extra_link_args = []
 
 ext_modules = [
     Pybind11Extension(
         "pymklpardiso._mkl_pardiso",
         ["py-mkl-pardiso.cpp"],
         cxx_std=17,
-        include_dirs=[mkl_include],
-        library_dirs=[mkl_libdir] if libraries else [],
+        include_dirs=[mkl_include] if mkl_include else [],
+        library_dirs=[mkl_libdir] if mkl_libdir and libraries else [],
         libraries=libraries,
         define_macros=define_macros,
         extra_link_args=extra_link_args,
