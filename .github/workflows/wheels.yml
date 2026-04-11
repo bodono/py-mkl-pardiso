@@ -35,9 +35,12 @@ jobs:
           CIBW_SKIP: "pp* *-musllinux*"
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
 
-          # Install Miniforge once, then use it to install MKL into a
-          # known prefix. Linux wheels use static MKL because auditwheel
-          # rejects the Intel shared libraries for manylinux_2_28.
+          # Hybrid wheel policy:
+          # - Linux uses static MKL because auditwheel rejects the Intel
+          #   shared libraries for manylinux_2_28 due to newer symbols.
+          # - Windows uses dynamic MKL and bundles the DLLs with delvewheel.
+          # TODO: Revisit dynamic MKL on Linux too if we find a manylinux-
+          # compatible shared-library distribution or a different repair path.
           CIBW_BEFORE_ALL_LINUX: >
             curl -fsSL https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh -o /tmp/miniforge.sh &&
             bash /tmp/miniforge.sh -b -p /opt/mkl &&

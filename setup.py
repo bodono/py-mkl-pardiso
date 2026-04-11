@@ -83,9 +83,12 @@ except RuntimeError as exc:
 # ILP64 interface (64-bit integers) -- matches MKL_INT64 / pardiso_64 in C++ source.
 define_macros = [("MKL_ILP64", None)]
 
-# Optional static-link override. Wheel CI uses static MKL on Linux because
-# auditwheel cannot vendor the Intel shared libraries under manylinux_2_28,
-# and dynamic linking plus delvewheel bundling on Windows.
+# Hybrid wheel policy:
+# - Linux uses static MKL because auditwheel cannot vendor the Intel shared
+#   libraries under manylinux_2_28.
+# - Windows uses dynamic MKL plus delvewheel bundling.
+# TODO: Switch Linux wheels to dynamic+bundled too if we find a manylinux-
+# compatible shared-library source or repair flow for MKL.
 static = os.environ.get("PYMKLPARDISO_STATIC", "").lower() in ("1", "true", "yes")
 
 
