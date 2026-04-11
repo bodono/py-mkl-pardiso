@@ -35,26 +35,27 @@ jobs:
           CIBW_SKIP: "pp* *-musllinux*"
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
 
-          # Hybrid wheel policy:
-          # - Linux uses static MKL because auditwheel rejects the Intel
-          #   shared libraries for manylinux_2_28 due to newer symbols.
-          # - Windows uses dynamic MKL and bundles the DLLs with delvewheel.
-          # TODO: Revisit dynamic MKL on Linux too if we find a manylinux-
-          # compatible shared-library distribution or a different repair path.
+          # Use Intel's oneAPI Linux packages directly rather than conda MKL.
+          # The wheel is built against dynamic MKL and auditwheel bundles the
+          # required shared libraries into the repaired artifact.
           CIBW_BEFORE_ALL_LINUX: >
-            curl -fsSL https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh -o /tmp/miniforge.sh &&
-            bash /tmp/miniforge.sh -b -p /opt/mkl &&
-            /opt/mkl/bin/conda install -y -p /opt/mkl mkl-devel mkl-static
+            dnf install -y dnf-plugins-core &&
+            dnf config-manager --add-repo https://yum.repos.intel.com/oneapi &&
+            rpm --import https://yum.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB &&
+            dnf install -y intel-oneapi-mkl-devel
 
           CIBW_ENVIRONMENT_LINUX: >
-            MKLROOT=/opt/mkl
-            PYMKLPARDISO_STATIC=1
+            MKLROOT=/opt/intel/oneapi/mkl/latest
+            LD_LIBRARY_PATH=/opt/intel/oneapi/mkl/latest/lib/intel64:/opt/intel/oneapi/mkl/latest/lib
+
+          CIBW_REPAIR_WHEEL_COMMAND_LINUX: >
+            LD_LIBRARY_PATH=/opt/intel/oneapi/mkl/latest/lib/intel64:/opt/intel/oneapi/mkl/latest/lib auditwheel repair -w {dest_dir} {wheel}
 
           CIBW_TEST_REQUIRES: pytest scipy
           CIBW_TEST_COMMAND: pytest {project}/tests -v
 
-      - name: Verify Linux wheels are statically linked to MKL
-        run: python3 tests/check_linux_wheel_static.py wheelhouse
+      - name: Verify Linux wheels bundle MKL shared libraries
+        run: python3 tests/check_linux_wheel_bundled.py wheelhouse
 
       - uses: actions/upload-artifact@v7
         with:
