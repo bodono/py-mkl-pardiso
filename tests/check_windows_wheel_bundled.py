@@ -7,6 +7,13 @@ from zipfile import ZipFile
 import pefile
 
 
+EXPECTED_MKL_DLLS = (
+    "mkl_intel_ilp64",
+    "mkl_sequential",
+    "mkl_core",
+)
+
+
 def find_extension(root):
     pyds = list(root.rglob("*.pyd"))
     if not pyds:
@@ -34,20 +41,35 @@ def check_wheel(path):
     with tempfile.TemporaryDirectory() as tmp:
         with ZipFile(path) as wheel:
             wheel.extractall(tmp)
+            wheel_files = [Path(name).name.lower() for name in wheel.namelist()]
         extension = find_extension(Path(tmp))
         imports = imported_dlls(extension)
 
-    forbidden = [name for name in imports if name.startswith("mkl") and name.endswith(".dll")]
-    if forbidden:
+    missing_imports = [
+        lib for lib in EXPECTED_MKL_DLLS
+        if not any(name.startswith(lib) and name.endswith(".dll") for name in imports)
+    ]
+    if missing_imports:
         raise RuntimeError(
-            f"{path} imports MKL DLLs at runtime:\n" + "\n".join(forbidden)
+            f"{path} is missing dynamic MKL DLL imports:\n" + "\n".join(missing_imports)
         )
-    print(f"{path}: no MKL DLL imports")
+
+    missing_bundles = [
+        lib for lib in EXPECTED_MKL_DLLS
+        if not any(name.startswith(lib) and name.endswith(".dll") for name in wheel_files)
+    ]
+    if missing_bundles:
+        raise RuntimeError(
+            f"{path} does not bundle the expected MKL DLLs:\n"
+            + "\n".join(missing_bundles)
+        )
+
+    print(f"{path}: bundles MKL DLLs")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Fail if a Windows wheel depends on MKL DLLs at runtime."
+        description="Fail if a Windows wheel does not bundle the MKL DLLs it imports."
     )
     parser.add_argument("wheelhouse", help="Directory containing built wheel files")
     args = parser.parse_args()

@@ -8,6 +8,11 @@ from zipfile import ZipFile
 
 
 NEEDED_RE = re.compile(r"\(NEEDED\)\s+Shared library: \[(.+)\]")
+EXPECTED_MKL_LIBS = (
+    "libmkl_intel_ilp64",
+    "libmkl_sequential",
+    "libmkl_core",
+)
 
 
 def find_extension(root):
@@ -22,7 +27,7 @@ def find_extension(root):
     return sos[0]
 
 
-def imported_sos(path):
+def imported_shared_libs(path):
     result = subprocess.run(
         ["readelf", "-d", str(path)],
         check=True,
@@ -41,20 +46,35 @@ def check_wheel(path):
     with tempfile.TemporaryDirectory() as tmp:
         with ZipFile(path) as wheel:
             wheel.extractall(tmp)
+            wheel_files = [Path(name).name.lower() for name in wheel.namelist()]
         extension = find_extension(Path(tmp))
-        imports = imported_sos(extension)
+        imports = imported_shared_libs(extension)
 
-    forbidden = [name for name in imports if name.startswith("libmkl") and ".so" in name]
-    if forbidden:
+    missing_imports = [
+        lib for lib in EXPECTED_MKL_LIBS
+        if not any(name.startswith(lib) and ".so" in name for name in imports)
+    ]
+    if missing_imports:
         raise RuntimeError(
-            f"{path} imports MKL shared libraries at runtime:\n" + "\n".join(forbidden)
+            f"{path} is missing dynamic MKL dependencies:\n" + "\n".join(missing_imports)
         )
-    print(f"{path}: no MKL shared library imports")
+
+    missing_bundles = [
+        lib for lib in EXPECTED_MKL_LIBS
+        if not any(name.startswith(lib) and ".so" in name for name in wheel_files)
+    ]
+    if missing_bundles:
+        raise RuntimeError(
+            f"{path} does not bundle the expected MKL shared libraries:\n"
+            + "\n".join(missing_bundles)
+        )
+
+    print(f"{path}: bundles MKL shared libraries")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Fail if a Linux wheel depends on MKL shared libraries at runtime."
+        description="Fail if a Linux wheel does not bundle the MKL shared libraries it imports."
     )
     parser.add_argument("wheelhouse", help="Directory containing built wheel files")
     args = parser.parse_args()

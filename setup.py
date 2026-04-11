@@ -83,8 +83,9 @@ except RuntimeError as exc:
 # ILP64 interface (64-bit integers) -- matches MKL_INT64 / pardiso_64 in C++ source.
 define_macros = [("MKL_ILP64", None)]
 
-# When PYMKLPARDISO_STATIC=1, statically link MKL so the wheel is
-# self-contained and users don't need MKL installed at runtime.
+# Optional local override for static linking. Wheel CI uses the standard
+# dynamic-link-plus-repair flow so shared MKL libraries are bundled into
+# the built wheels.
 static = os.environ.get("PYMKLPARDISO_STATIC", "").lower() in ("1", "true", "yes")
 
 
@@ -111,6 +112,8 @@ if mkl_error is None:
                     "mkl_core.lib",
                 )
             else:
+                # Dynamic Windows linkage uses the documented import libraries.
+                # Wheel CI then bundles the corresponding MKL DLLs via delvewheel.
                 libraries = ["mkl_intel_ilp64_dll", "mkl_sequential_dll", "mkl_core_dll"]
         elif static:
             # Static linking on Linux: pass full paths to .a archives inside
@@ -125,7 +128,8 @@ if mkl_error is None:
                 ["-Wl,--end-group", "-lpthread", "-lm", "-ldl"]
             )
         else:
-            # Dynamic linking (for local development / testing).
+            # Dynamic Linux linkage. Wheel CI bundles the needed MKL shared
+            # libraries into the repaired wheel via auditwheel.
             libraries = ["mkl_intel_ilp64", "mkl_sequential", "mkl_core", "pthread", "m", "dl"]
             extra_link_args = [f"-Wl,-rpath,{mkl_libdir}"]
     except RuntimeError as exc:
