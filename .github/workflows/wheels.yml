@@ -71,12 +71,14 @@ jobs:
         uses: conda-incubator/setup-miniconda@v3
         with:
           activate-environment: build
-          channels: conda-forge,defaults
+          channels: https://software.repos.intel.com/python/conda/,conda-forge,defaults
 
       - name: Install MKL
         shell: bash -el {0}
         run: |
-          conda install -y mkl-devel
+          # Use Intel's conda channel directly on Windows, then bundle the
+          # resulting MKL DLLs into the wheel via delvewheel.
+          conda install -y -c https://software.repos.intel.com/python/conda/ -c conda-forge mkl mkl-devel
           echo "MKL_PREFIX=$CONDA_PREFIX/Library" >> $GITHUB_ENV
 
       - name: Build wheels
