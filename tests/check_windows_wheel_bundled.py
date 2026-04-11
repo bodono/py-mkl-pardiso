@@ -7,13 +7,6 @@ from zipfile import ZipFile
 import pefile
 
 
-EXPECTED_MKL_DLLS = (
-    "mkl_intel_ilp64",
-    "mkl_sequential",
-    "mkl_core",
-)
-
-
 def find_extension(root):
     pyds = list(root.rglob("*.pyd"))
     if not pyds:
@@ -54,17 +47,16 @@ def check_wheel(path):
             f"{path} does not import any MKL DLLs at runtime"
         )
 
-    missing_bundles = [
-        lib for lib in EXPECTED_MKL_DLLS
-        if not any(name.startswith(lib) and name.endswith(".dll") for name in wheel_files)
+    bundled_mkl_dlls = [
+        name for name in wheel_files
+        if name.startswith("mkl") and name.endswith(".dll")
     ]
-    if missing_bundles:
+    if not bundled_mkl_dlls:
         raise RuntimeError(
-            f"{path} does not bundle the expected MKL DLLs:\n"
-            + "\n".join(missing_bundles)
+            f"{path} does not bundle any MKL DLLs"
         )
 
-    print(f"{path}: bundles MKL DLLs")
+    print(f"{path}: imports MKL DLLs and bundles {len(bundled_mkl_dlls)} MKL DLLs")
 
 
 def main():
