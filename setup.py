@@ -28,8 +28,12 @@ def find_mkl():
     if sys.platform == "linux":
         candidates.append("/opt/intel/oneapi/mkl/latest")
     elif sys.platform == "win32":
-        pf = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
-        candidates.append(os.path.join(pf, "Intel", "oneAPI", "mkl", "latest"))
+        for pf_env, default in (
+            ("ProgramFiles", r"C:\Program Files"),
+            ("ProgramFiles(x86)", r"C:\Program Files (x86)"),
+        ):
+            pf = os.environ.get(pf_env, default)
+            candidates.append(os.path.join(pf, "Intel", "oneAPI", "mkl", "latest"))
 
     # On Windows, conda-forge packages install under a Library/ subdirectory.
     if sys.platform == "win32":
