@@ -1,7 +1,7 @@
 import os
 import sys
 
-from pybind11.setup_helpers import Pybind11Extension, build_ext
+from pybind11.setup_helpers import Pybind11Extension, build_ext as pybind11_build_ext
 from setuptools import setup
 
 
@@ -58,12 +58,23 @@ def find_mkl():
     )
 
 
+class build_ext(pybind11_build_ext):
+    """Defer missing-MKL failures until extension build time."""
+
+    def build_extensions(self):
+        if mkl_error is not None:
+            raise RuntimeError(str(mkl_error))
+        super().build_extensions()
+
+
 # MKL is required at compile time but not for sdist creation.
 try:
     mkl_include, mkl_libdir = find_mkl()
-except RuntimeError:
-    mkl_include = ""
-    mkl_libdir = ""
+    mkl_error = None
+except RuntimeError as exc:
+    mkl_include = None
+    mkl_libdir = None
+    mkl_error = exc
 
 # ILP64 interface (64-bit integers) -- matches MKL_INT64 / pardiso_64 in C++ source.
 define_macros = [("MKL_ILP64", None)]
@@ -72,33 +83,35 @@ define_macros = [("MKL_ILP64", None)]
 # self-contained and users don't need MKL installed at runtime.
 static = os.environ.get("PYMKLPARDISO_STATIC", "").lower() in ("1", "true", "yes")
 
-if sys.platform == "win32":
-    libraries = ["mkl_intel_ilp64", "mkl_sequential", "mkl_core"]
-    extra_link_args = []
-elif static:
-    # Static linking on Linux: pass full paths to .a archives inside
-    # --start-group / --end-group to resolve circular MKL dependencies.
-    libraries = []
-    _mkl_archives = [
-        os.path.join(mkl_libdir, f"lib{name}.a")
-        for name in ("mkl_intel_ilp64", "mkl_sequential", "mkl_core")
-    ]
-    extra_link_args = (
-        ["-Wl,--start-group"] + _mkl_archives +
-        ["-Wl,--end-group", "-lpthread", "-lm", "-ldl"]
-    )
-else:
-    # Dynamic linking (for local development / testing).
-    libraries = ["mkl_intel_ilp64", "mkl_sequential", "mkl_core", "pthread", "m", "dl"]
-    extra_link_args = [f"-Wl,-rpath,{mkl_libdir}"]
+libraries = []
+extra_link_args = []
+if mkl_error is None:
+    if sys.platform == "win32":
+        libraries = ["mkl_intel_ilp64", "mkl_sequential", "mkl_core"]
+        extra_link_args = []
+    elif static:
+        # Static linking on Linux: pass full paths to .a archives inside
+        # --start-group / --end-group to resolve circular MKL dependencies.
+        _mkl_archives = [
+            os.path.join(mkl_libdir, f"lib{name}.a")
+            for name in ("mkl_intel_ilp64", "mkl_sequential", "mkl_core")
+        ]
+        extra_link_args = (
+            ["-Wl,--start-group"] + _mkl_archives +
+            ["-Wl,--end-group", "-lpthread", "-lm", "-ldl"]
+        )
+    else:
+        # Dynamic linking (for local development / testing).
+        libraries = ["mkl_intel_ilp64", "mkl_sequential", "mkl_core", "pthread", "m", "dl"]
+        extra_link_args = [f"-Wl,-rpath,{mkl_libdir}"]
 
 ext_modules = [
     Pybind11Extension(
         "pymklpardiso._mkl_pardiso",
         ["py-mkl-pardiso.cpp"],
         cxx_std=17,
-        include_dirs=[mkl_include],
-        library_dirs=[mkl_libdir] if libraries else [],
+        include_dirs=[mkl_include] if mkl_include else [],
+        library_dirs=[mkl_libdir] if mkl_libdir and libraries else [],
         libraries=libraries,
         define_macros=define_macros,
         extra_link_args=extra_link_args,
