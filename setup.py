@@ -83,27 +83,51 @@ define_macros = [("MKL_ILP64", None)]
 # self-contained and users don't need MKL installed at runtime.
 static = os.environ.get("PYMKLPARDISO_STATIC", "").lower() in ("1", "true", "yes")
 
+
+def mkl_lib_paths(*filenames):
+    paths = [os.path.join(mkl_libdir, filename) for filename in filenames]
+    missing = [path for path in paths if not os.path.isfile(path)]
+    if missing:
+        raise RuntimeError(
+            "Could not find the expected MKL libraries:\n" + "\n".join(missing)
+        )
+    return paths
+
 libraries = []
 extra_link_args = []
 if mkl_error is None:
-    if sys.platform == "win32":
-        libraries = ["mkl_intel_ilp64", "mkl_sequential", "mkl_core"]
+    try:
+        if sys.platform == "win32":
+            if static:
+                # Link the static oneMKL archives directly so Windows wheels do
+                # not depend on MKL DLLs at runtime.
+                extra_link_args = mkl_lib_paths(
+                    "mkl_intel_ilp64.lib",
+                    "mkl_sequential.lib",
+                    "mkl_core.lib",
+                )
+            else:
+                libraries = ["mkl_intel_ilp64_dll", "mkl_sequential_dll", "mkl_core_dll"]
+        elif static:
+            # Static linking on Linux: pass full paths to .a archives inside
+            # --start-group / --end-group to resolve circular MKL dependencies.
+            _mkl_archives = mkl_lib_paths(
+                "libmkl_intel_ilp64.a",
+                "libmkl_sequential.a",
+                "libmkl_core.a",
+            )
+            extra_link_args = (
+                ["-Wl,--start-group"] + _mkl_archives +
+                ["-Wl,--end-group", "-lpthread", "-lm", "-ldl"]
+            )
+        else:
+            # Dynamic linking (for local development / testing).
+            libraries = ["mkl_intel_ilp64", "mkl_sequential", "mkl_core", "pthread", "m", "dl"]
+            extra_link_args = [f"-Wl,-rpath,{mkl_libdir}"]
+    except RuntimeError as exc:
+        mkl_error = exc
+        libraries = []
         extra_link_args = []
-    elif static:
-        # Static linking on Linux: pass full paths to .a archives inside
-        # --start-group / --end-group to resolve circular MKL dependencies.
-        _mkl_archives = [
-            os.path.join(mkl_libdir, f"lib{name}.a")
-            for name in ("mkl_intel_ilp64", "mkl_sequential", "mkl_core")
-        ]
-        extra_link_args = (
-            ["-Wl,--start-group"] + _mkl_archives +
-            ["-Wl,--end-group", "-lpthread", "-lm", "-ldl"]
-        )
-    else:
-        # Dynamic linking (for local development / testing).
-        libraries = ["mkl_intel_ilp64", "mkl_sequential", "mkl_core", "pthread", "m", "dl"]
-        extra_link_args = [f"-Wl,-rpath,{mkl_libdir}"]
 
 ext_modules = [
     Pybind11Extension(
