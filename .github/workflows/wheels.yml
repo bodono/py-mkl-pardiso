@@ -50,7 +50,7 @@ jobs:
           CIBW_TEST_COMMAND: pytest {project}/tests -v
 
       - name: Verify Linux wheels are statically linked to MKL
-        run: python3 tools/check_linux_wheel_static.py wheelhouse
+        run: python3 tests/check_linux_wheel_static.py wheelhouse
 
       - uses: actions/upload-artifact@v7
         with:
@@ -91,7 +91,7 @@ jobs:
       - name: Verify Windows wheels are statically linked to MKL
         run: |
           python -m pip install pefile
-          python tools/check_windows_wheel_static.py wheelhouse
+          python tests/check_windows_wheel_static.py wheelhouse
 
       - uses: actions/upload-artifact@v7
         with:
