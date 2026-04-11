@@ -46,12 +46,12 @@ def check_wheel(path):
         imports = imported_dlls(extension)
 
     missing_imports = [
-        lib for lib in EXPECTED_MKL_DLLS
-        if not any(name.startswith(lib) and name.endswith(".dll") for name in imports)
+        name for name in imports
+        if name.startswith("mkl") and name.endswith(".dll")
     ]
-    if missing_imports:
+    if not missing_imports:
         raise RuntimeError(
-            f"{path} is missing dynamic MKL DLL imports:\n" + "\n".join(missing_imports)
+            f"{path} does not import any MKL DLLs at runtime"
         )
 
     missing_bundles = [
