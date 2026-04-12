@@ -5,6 +5,12 @@
 
 #include <mkl.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -727,10 +733,32 @@ namespace {
 
 void check_mkl_interface_layer() {
     // This library calls pardiso_64 which requires the ILP64 (64-bit integer)
-    // interface. Set it explicitly and check what it was before — if another
-    // library had configured MKL for LP64, warn the user.
-    int prev = MKL_Set_Interface_Layer(MKL_INTERFACE_ILP64);
-    if (prev != MKL_INTERFACE_ILP64) {
+    // interface. If another library has configured MKL for LP64, warn the user.
+    //
+    // MKL_Set_Interface_Layer is not available in all MKL builds (e.g. some
+    // conda packages), so we look it up at runtime via dlsym/GetProcAddress.
+    using SetLayerFn = int (*)(int);
+    SetLayerFn set_layer = nullptr;
+
+#ifdef _WIN32
+    HMODULE mkl = GetModuleHandleA("mkl_rt.2.dll");
+    if (!mkl) mkl = GetModuleHandleA("mkl_rt.dll");
+    if (mkl) {
+        set_layer = reinterpret_cast<SetLayerFn>(
+            GetProcAddress(mkl, "MKL_Set_Interface_Layer"));
+    }
+#else
+    set_layer = reinterpret_cast<SetLayerFn>(
+        dlsym(RTLD_DEFAULT, "MKL_Set_Interface_Layer"));
+#endif
+
+    if (!set_layer) {
+        return;  // Function not available; skip check.
+    }
+
+    constexpr int MKL_ILP64 = 1;
+    int prev = set_layer(MKL_ILP64);
+    if (prev != MKL_ILP64) {
         std::ostringstream oss;
         oss << "MKL interface layer was " << prev
             << " (LP64) but py-mkl-pardiso requires ILP64 (64-bit integers). "
