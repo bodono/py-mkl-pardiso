@@ -35,17 +35,18 @@ jobs:
           CIBW_SKIP: "pp* *-musllinux*"
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
 
-          # Install Miniforge once, then use it to install MKL into a
-          # known prefix. Static linking embeds MKL into the wheel so there
-          # are no runtime shared-library conflicts (e.g. ILP64 vs LP64 when
-          # the user's environment also has conda MKL installed).
+          # Use Intel's oneAPI Linux packages directly. Static linking
+          # embeds MKL into the wheel so there are no runtime shared-library
+          # conflicts (e.g. ILP64 vs LP64 when the user's environment also
+          # has conda MKL installed).
           CIBW_BEFORE_ALL_LINUX: >
-            curl -fsSL https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh -o /tmp/miniforge.sh &&
-            bash /tmp/miniforge.sh -b -p /opt/mkl &&
-            /opt/mkl/bin/conda install -y -p /opt/mkl mkl-devel mkl-static
+            dnf install -y dnf-plugins-core &&
+            dnf config-manager --add-repo https://yum.repos.intel.com/oneapi &&
+            rpm --import https://yum.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB &&
+            dnf install -y intel-oneapi-mkl-devel
 
           CIBW_ENVIRONMENT_LINUX: >
-            MKLROOT=/opt/mkl
+            MKLROOT=/opt/intel/oneapi/mkl/latest
             PYMKLPARDISO_STATIC=1
 
           CIBW_TEST_REQUIRES: pytest scipy
