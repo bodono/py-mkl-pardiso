@@ -8,7 +8,7 @@ from zipfile import ZipFile
 
 
 NEEDED_RE = re.compile(r"\(NEEDED\)\s+Shared library: \[(.+)\]")
-EXPECTED_MKL_LIBS = (
+MKL_LIBS = (
     "libmkl_intel_ilp64",
     "libmkl_sequential",
     "libmkl_core",
@@ -42,6 +42,16 @@ def imported_shared_libs(path):
     return sorted(imports)
 
 
+def has_pardiso_symbols(path):
+    """Check that PARDISO symbols are present (statically linked)."""
+    result = subprocess.run(
+        ["nm", "-g", str(path)],
+        capture_output=True,
+        text=True,
+    )
+    return "pardiso_64" in result.stdout.lower() or "pardiso" in result.stdout.lower()
+
+
 def check_wheel(path):
     with tempfile.TemporaryDirectory() as tmp:
         with ZipFile(path) as wheel:
@@ -50,31 +60,42 @@ def check_wheel(path):
         extension = find_extension(Path(tmp))
         imports = imported_shared_libs(extension)
 
-    missing_imports = [
-        lib for lib in EXPECTED_MKL_LIBS
-        if not any(name.startswith(lib) and ".so" in name for name in imports)
+    # With static linking, the extension should NOT depend on MKL shared libs.
+    dynamic_mkl = [
+        imp for imp in imports
+        if any(imp.startswith(lib) for lib in MKL_LIBS)
     ]
-    if missing_imports:
+    if dynamic_mkl:
         raise RuntimeError(
-            f"{path} is missing dynamic MKL dependencies:\n" + "\n".join(missing_imports)
+            f"{path} dynamically links MKL (expected static): {dynamic_mkl}"
         )
 
-    missing_bundles = [
-        lib for lib in EXPECTED_MKL_LIBS
-        if not any(name.startswith(lib) and ".so" in name for name in wheel_files)
+    # No separate MKL .so files should be bundled in the wheel.
+    bundled_mkl = [
+        name for name in wheel_files
+        if any(name.startswith(lib) and ".so" in name for lib in MKL_LIBS)
     ]
-    if missing_bundles:
+    if bundled_mkl:
         raise RuntimeError(
-            f"{path} does not bundle the expected MKL shared libraries:\n"
-            + "\n".join(missing_bundles)
+            f"{path} bundles MKL shared libraries (expected static): {bundled_mkl}"
         )
 
-    print(f"{path}: bundles MKL shared libraries")
+    # Verify PARDISO symbols are present (MKL is statically linked).
+    with tempfile.TemporaryDirectory() as tmp2:
+        with ZipFile(path) as wheel:
+            wheel.extractall(tmp2)
+        ext = find_extension(Path(tmp2))
+        if not has_pardiso_symbols(ext):
+            raise RuntimeError(
+                f"{path} does not contain PARDISO symbols — MKL may not be linked"
+            )
+
+    print(f"{path}: MKL is statically linked (PARDISO symbols present, no dynamic MKL deps)")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Fail if a Linux wheel does not bundle the MKL shared libraries it imports."
+        description="Verify Linux wheels have MKL statically linked."
     )
     parser.add_argument("wheelhouse", help="Directory containing built wheel files")
     args = parser.parse_args()
