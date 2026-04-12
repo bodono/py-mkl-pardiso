@@ -30,29 +30,6 @@ def imported_dlls(path):
         pe.close()
 
 
-def has_pardiso_exports(path):
-    """Check that the extension exports or contains PARDISO-related symbols."""
-    pe = pefile.PE(str(path))
-    try:
-        # Check exported symbols.
-        for entry in getattr(pe, "DIRECTORY_ENTRY_EXPORT", []):
-            if entry is None:
-                continue
-            for sym in getattr(entry, "symbols", []):
-                name = getattr(sym, "name", None)
-                if name and b"pardiso" in name.lower():
-                    return True
-        # Check imported symbols (pybind11 init function implies the module loaded).
-        for entry in getattr(pe, "DIRECTORY_ENTRY_IMPORT", []):
-            dll_name = entry.dll.decode("ascii").lower()
-            # If it imports from python DLL, the module is valid.
-            if dll_name.startswith("python"):
-                return True
-        return False
-    finally:
-        pe.close()
-
-
 def check_wheel(path):
     with tempfile.TemporaryDirectory() as tmp:
         with ZipFile(path) as wheel:
@@ -81,15 +58,12 @@ def check_wheel(path):
             f"{path} bundles MKL DLLs (expected static): {bundled_mkl}"
         )
 
-    # Verify the extension is a valid pybind11 module (implies MKL is linked).
-    with tempfile.TemporaryDirectory() as tmp2:
-        with ZipFile(path) as wheel:
-            wheel.extractall(tmp2)
-        ext = find_extension(Path(tmp2))
-        if not has_pardiso_exports(ext):
-            raise RuntimeError(
-                f"{path} does not appear to be a valid pybind11 module"
-            )
+    # Verify the extension imports from the Python DLL (valid pybind11 module).
+    python_imports = [name for name in imports if name.startswith("python")]
+    if not python_imports:
+        raise RuntimeError(
+            f"{path} does not import from Python DLL — may not be a valid extension"
+        )
 
     print(f"{path}: MKL is statically linked (no MKL DLL dependencies)")
 
