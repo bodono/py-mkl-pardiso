@@ -727,17 +727,18 @@ namespace {
 
 void check_mkl_interface_layer() {
     // This library calls pardiso_64 which requires the ILP64 (64-bit integer)
-    // interface. If another library has loaded MKL with the LP64 (32-bit)
-    // interface, MKL may be misconfigured and PARDISO calls could silently
-    // corrupt memory. Detect this early and raise a clear error.
-    int layer = MKL_Get_Interface_Layer();
-    if (layer != MKL_INTERFACE_ILP64) {
+    // interface. Set it explicitly and check what it was before — if another
+    // library had configured MKL for LP64, warn the user.
+    int prev = MKL_Set_Interface_Layer(MKL_INTERFACE_ILP64);
+    if (prev != MKL_INTERFACE_ILP64) {
         std::ostringstream oss;
-        oss << "MKL interface layer mismatch: py-mkl-pardiso requires ILP64 "
-            << "(64-bit integers) but MKL reports layer " << layer
-            << " (LP64). This typically happens when another library in the "
-            << "process has loaded an incompatible MKL configuration.";
-        throw std::runtime_error(oss.str());
+        oss << "MKL interface layer was " << prev
+            << " (LP64) but py-mkl-pardiso requires ILP64 (64-bit integers). "
+            << "The layer has been corrected to ILP64, but another library in "
+            << "the process may have loaded an incompatible MKL configuration. "
+            << "If you experience issues, ensure no other MKL-dependent library "
+            << "forces LP64.";
+        PyErr_WarnEx(PyExc_RuntimeWarning, oss.str().c_str(), 1);
     }
 }
 
