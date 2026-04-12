@@ -723,8 +723,30 @@ private:
     std::vector<Index> perm_buf_;  // Reusable buffer for PARDISO perm when user hasn't set one.
 };
 
+namespace {
+
+void check_mkl_interface_layer() {
+    // This library calls pardiso_64 which requires the ILP64 (64-bit integer)
+    // interface. If another library has loaded MKL with the LP64 (32-bit)
+    // interface, MKL may be misconfigured and PARDISO calls could silently
+    // corrupt memory. Detect this early and raise a clear error.
+    int layer = MKL_Get_Interface_Layer();
+    if (layer != MKL_INTERFACE_ILP64) {
+        std::ostringstream oss;
+        oss << "MKL interface layer mismatch: py-mkl-pardiso requires ILP64 "
+            << "(64-bit integers) but MKL reports layer " << layer
+            << " (LP64). This typically happens when another library in the "
+            << "process has loaded an incompatible MKL configuration.";
+        throw std::runtime_error(oss.str());
+    }
+}
+
+}  // namespace
+
 PYBIND11_MODULE(_mkl_pardiso, m) {
     m.doc() = "pybind11 wrapper for common Intel oneMKL PARDISO real-valued use cases";
+
+    check_mkl_interface_layer();
 
     py::class_<PardisoSolver>(m, "PardisoSolver")
         .def(py::init<Index, Index>(),
