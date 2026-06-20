@@ -34,22 +34,22 @@ jobs:
       - name: Install MKL
         run: |
           if [ "$RUNNER_OS" = "Windows" ]; then
-            conda install -y mkl-devel mkl-static
+            conda install -y -n test pip mkl-devel mkl-static
           else
-            conda install -y mkl-devel
+            conda install -y -n test pip mkl-devel
           fi
-          conda list mkl
+          conda list -n test mkl
 
       - name: Set MKLROOT
         run: |
           if [ "$RUNNER_OS" = "Windows" ]; then
-            echo "MKLROOT=$CONDA_PREFIX/Library" >> $GITHUB_ENV
+            echo "MKLROOT=$CONDA/envs/test/Library" >> $GITHUB_ENV
           else
-            echo "MKLROOT=$CONDA_PREFIX" >> $GITHUB_ENV
+            echo "MKLROOT=$CONDA/envs/test" >> $GITHUB_ENV
           fi
 
       - name: Install package
-        run: pip install -e ".[test]"
+        run: conda run --no-capture-output -n test python -m pip install -e ".[test]"
 
       - name: Run tests
-        run: pytest -v tests/
+        run: conda run --no-capture-output -n test python -m pytest -v tests/
