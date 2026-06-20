@@ -28,21 +28,21 @@ jobs:
 
       - name: Install MKL and Valgrind
         run: |
-          conda install -y mkl-devel
+          conda install -y -n test pip mkl-devel
           sudo apt-get update && sudo apt-get install -y valgrind
 
       - name: Set MKLROOT
-        run: echo "MKLROOT=$CONDA_PREFIX" >> $GITHUB_ENV
+        run: echo "MKLROOT=$CONDA/envs/test" >> $GITHUB_ENV
 
       - name: Install with debug symbols
         env:
           CFLAGS: "-g -O1"
           CXXFLAGS: "-g -O1"
-        run: pip install -e ".[test]" -v
+        run: conda run --no-capture-output -n test python -m pip install -e ".[test]" -v
 
       - name: Run tests under Valgrind
         run: |
-          valgrind \
+          conda run --no-capture-output -n test valgrind \
             --tool=memcheck \
             --leak-check=no \
             --track-origins=yes \
