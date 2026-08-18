@@ -4,7 +4,7 @@
 
 Python pybind11 wrapper for the Intel oneMKL PARDISO sparse direct solver.
 
-`pymklpardiso` exposes the real-valued subset of Intel's
+`pymklpardiso` exposes double-precision real and complex support from Intel's
 [PARDISO](https://www.intel.com/content/www/us/en/docs/onemkl/developer-reference-c/2025-0/onemkl-pardiso-parallel-direct-sparse-solver-iface.html)
 sparse direct solver to Python via [pybind11](https://github.com/pybind/pybind11).
 It works with SciPy sparse matrices in CSR format and NumPy arrays.
@@ -54,6 +54,24 @@ x = solver.solve(b)
 print(x)  # [0.09090909 0.63636364]
 ```
 
+Complex matrices use the corresponding complex matrix type and NumPy
+`complex128` values. Hermitian and complex-symmetric matrices are supplied as
+an upper-triangular CSR matrix, just like real symmetric matrices:
+
+```python
+from pymklpardiso import MTYPE_COMPLEX_HERM_POSDEF
+
+A_full = np.array([
+    [4.0, 1.0 + 1.0j],
+    [1.0 - 1.0j, 3.0],
+])
+A_upper = sp.csr_matrix(np.triu(A_full))
+
+solver = PardisoSolver(A_upper, MTYPE_COMPLEX_HERM_POSDEF)
+b = np.array([1.0 + 2.0j, 3.0 - 1.0j])
+x = solver.solve(b)
+```
+
 ### Refactoring workflow
 
 When the sparsity pattern stays the same but values change (e.g., in an
@@ -76,7 +94,7 @@ pattern from `A`, applies any `iparms` overrides, and runs symbolic analysis
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `A` | sparse CSR | *(required)* | Square sparse matrix (any object with `indptr`, `indices`, `data`, `shape`). For symmetric types, pass only the upper triangle in CSR format. |
+| `A` | sparse CSR | *(required)* | Square sparse matrix (any object with `indptr`, `indices`, `data`, `shape`). For symmetric and Hermitian types, pass only the upper triangle in CSR format. |
 | `mtype` | `int` | *(required)* | Matrix type (see constants below). |
 | `iparms` | `dict` | `None` | Optional `{index: value}` iparm overrides. |
 | `msglvl` | `int` | `0` | Message level (0 = silent, 1 = print statistics). |
@@ -89,16 +107,24 @@ pattern from `A`, applies any `iparms` overrides, and runs symbolic analysis
 | `MTYPE_REAL_SYM_POSDEF` | 2 | Real symmetric positive definite |
 | `MTYPE_REAL_SYM_INDEF` | -2 | Real symmetric indefinite |
 | `MTYPE_REAL_NONSYM` | 11 | Real nonsymmetric |
+| `MTYPE_COMPLEX_STRUCT_SYM` | 3 | Complex structurally symmetric |
+| `MTYPE_COMPLEX_HERM_POSDEF` | 4 | Complex Hermitian positive definite |
+| `MTYPE_COMPLEX_HERM_INDEF` | -4 | Complex Hermitian indefinite |
+| `MTYPE_COMPLEX_SYM` | 6 | Complex symmetric |
+| `MTYPE_COMPLEX_NONSYM` | 13 | Complex nonsymmetric |
 
 ### Core methods
 
 **`solver.solve(b)`**
 Solve `Ax = b`. Accepts 1D `(n,)` or 2D `(n, nrhs)` arrays. Returns the
-solution as a new NumPy array (Fortran-contiguous for 2D).
+solution as a new NumPy array (Fortran-contiguous for 2D). Real solvers return
+`float64`; complex solvers return `complex128` and promote real right-hand
+sides automatically.
 
 **`solver.solve_into(b, x)`**
 Solve `Ax = b` writing into pre-allocated `x`. For 2D arrays, both `b` and
-`x` must be Fortran-contiguous.
+`x` must be Fortran-contiguous. The output must have dtype `float64` for a
+real solver or `complex128` for a complex solver.
 
 **`solver.refactor(values)`**
 Re-factorize with new nonzero values (phase 22 only). Does not re-run
@@ -142,6 +168,8 @@ continue to work, including with value-dependent analysis settings such as
 ### iparm notes
 
 - `iparm[0]` is locked to `1` (user-supplied parameters).
+- `iparm[27]` is locked to `0` (double precision). The wrapper supports
+  `float64` and `complex128`, not PARDISO's single-precision mode.
 - `iparm[34]` is locked to `1` (zero-based indexing).
 - See the [MKL PARDISO iparm documentation](https://www.intel.com/content/www/us/en/docs/onemkl/developer-reference-c/2025-0/pardiso-iparm-parameter.html) for all parameters.
 
