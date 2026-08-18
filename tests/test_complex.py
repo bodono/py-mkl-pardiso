@@ -156,6 +156,22 @@ def test_complex_solve_into_multiple_rhs():
     npt.assert_allclose(A @ X, B, atol=1e-12)
 
 
+def test_complex_solve_into_promotes_real_fortran_contiguous_rhs():
+    A = _COMPLEX_CASES[1].values[1]
+    matrix = _as_pardiso_csr(A, upper_only=True)
+    solver = PardisoSolver(matrix, MTYPE_COMPLEX_HERM_POSDEF)
+    B = np.asfortranarray(np.array([
+        [1.0, 2.0],
+        [0.0, 1.0],
+        [3.0, -1.0],
+    ]))
+    X = np.asfortranarray(np.zeros(B.shape, dtype=np.complex128))
+
+    solver.solve_into(B, X)
+
+    npt.assert_allclose(A @ X, B, atol=1e-12)
+
+
 def test_complex_solve_into_requires_complex128_output():
     A = _COMPLEX_CASES[1].values[1]
     matrix = _as_pardiso_csr(A, upper_only=True)
@@ -173,10 +189,26 @@ def test_complex_refactor_preserves_imaginary_values():
     A2 = A.copy()
     A2[np.diag_indices_from(A2)] += np.array([0.5j, -0.75j, 1.25j])
     matrix2 = _as_pardiso_csr(A2, upper_only=False)
+    solver.refactor(matrix2.data.astype(np.complex128))
+
+    b = np.array([1.0 + 2.0j, -1.0 + 0.5j, 3.0 - 1.0j])
+    x = solver.solve(b)
+    npt.assert_allclose(A2 @ x, b, atol=1e-12)
+
+
+def test_complex64_refactor_values_are_promoted():
+    A = _COMPLEX_CASES[4].values[1]
+    matrix = _as_pardiso_csr(A, upper_only=False)
+    solver = PardisoSolver(matrix, MTYPE_COMPLEX_NONSYM)
+
+    A2 = A.copy()
+    A2[np.diag_indices_from(A2)] += np.array([0.5j, -0.75j, 1.25j])
+    matrix2 = _as_pardiso_csr(A2, upper_only=False)
     solver.refactor(matrix2.data.astype(np.complex64))
 
     b = np.array([1.0 + 2.0j, -1.0 + 0.5j, 3.0 - 1.0j])
     x = solver.solve(b)
+    assert x.dtype == np.complex128
     npt.assert_allclose(A2 @ x, b, atol=1e-6)
 
 
@@ -224,6 +256,40 @@ def test_complex_hermitian_type_rejects_lower_triangle():
 
     with pytest.raises(ValueError, match="upper-triangular"):
         PardisoSolver(matrix, MTYPE_COMPLEX_HERM_POSDEF)
+
+
+@pytest.mark.parametrize(
+    "mtype",
+    [MTYPE_COMPLEX_HERM_POSDEF, MTYPE_COMPLEX_HERM_INDEF],
+)
+def test_hermitian_types_reject_imaginary_diagonal(mtype):
+    A = np.array([
+        [4.0 + 0.1j, 1.0 + 0.5j],
+        [1.0 - 0.5j, 3.0],
+    ])
+    matrix = _as_pardiso_csr(A, upper_only=True)
+
+    with pytest.raises(ValueError, match="diagonal entries must be real"):
+        PardisoSolver(matrix, mtype)
+
+
+def test_hermitian_refactor_rejects_imaginary_diagonal():
+    A = _COMPLEX_CASES[1].values[1]
+    matrix = _as_pardiso_csr(A, upper_only=True)
+    solver = PardisoSolver(matrix, MTYPE_COMPLEX_HERM_POSDEF)
+    invalid_values = matrix.data.copy()
+    invalid_values[0] += 0.1j
+
+    with pytest.raises(ValueError, match="row 0"):
+        solver.refactor(invalid_values)
+
+
+def test_invalid_mtype_errors_include_descriptions():
+    with pytest.raises(ValueError, match="complex Hermitian positive definite"):
+        low_level.PardisoSolver(999)
+
+    with pytest.raises(ValueError, match="complex Hermitian positive definite"):
+        PardisoSolver(sp.eye(2, format="csr"), 999)
 
 
 def test_complex_matrix_type_constants():

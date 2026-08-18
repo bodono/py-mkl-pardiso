@@ -15,19 +15,21 @@ from pymklpardiso._mkl_pardiso import (
 )
 from pymklpardiso._mkl_pardiso import PardisoSolver as _PardisoSolver
 
-_REAL_MTYPES = frozenset((
-    MTYPE_REAL_STRUCT_SYM,
-    MTYPE_REAL_SYM_POSDEF,
-    MTYPE_REAL_SYM_INDEF,
-    MTYPE_REAL_NONSYM,
-))
-_COMPLEX_MTYPES = frozenset((
-    MTYPE_COMPLEX_STRUCT_SYM,
-    MTYPE_COMPLEX_HERM_POSDEF,
-    MTYPE_COMPLEX_HERM_INDEF,
-    MTYPE_COMPLEX_SYM,
-    MTYPE_COMPLEX_NONSYM,
-))
+_MTYPE_INFO = {
+    MTYPE_REAL_STRUCT_SYM: ("real structurally symmetric", np.float64),
+    MTYPE_REAL_SYM_POSDEF: ("real symmetric positive definite", np.float64),
+    MTYPE_REAL_SYM_INDEF: ("real symmetric indefinite", np.float64),
+    MTYPE_COMPLEX_STRUCT_SYM: ("complex structurally symmetric", np.complex128),
+    MTYPE_COMPLEX_HERM_POSDEF: ("complex Hermitian positive definite", np.complex128),
+    MTYPE_COMPLEX_HERM_INDEF: ("complex Hermitian indefinite", np.complex128),
+    MTYPE_COMPLEX_SYM: ("complex symmetric", np.complex128),
+    MTYPE_REAL_NONSYM: ("real nonsymmetric", np.float64),
+    MTYPE_COMPLEX_NONSYM: ("complex nonsymmetric", np.complex128),
+}
+_SUPPORTED_MTYPE_DESCRIPTIONS = ", ".join(
+    f"{mtype} ({description})"
+    for mtype, (description, _) in _MTYPE_INFO.items()
+)
 _UPPER_TRIANGULAR_MTYPES = frozenset((
     MTYPE_REAL_SYM_POSDEF,
     MTYPE_REAL_SYM_INDEF,
@@ -38,11 +40,12 @@ _UPPER_TRIANGULAR_MTYPES = frozenset((
 
 
 def _dtype_for_mtype(mtype):
-    if mtype in _REAL_MTYPES:
-        return np.float64
-    if mtype in _COMPLEX_MTYPES:
-        return np.complex128
-    raise ValueError("mtype must be one of: 1, 2, -2, 3, 4, -4, 6, 11, 13")
+    try:
+        return _MTYPE_INFO[mtype][1]
+    except (KeyError, TypeError):
+        raise ValueError(
+            f"mtype must be one of: {_SUPPORTED_MTYPE_DESCRIPTIONS}"
+        ) from None
 
 
 def _coerce_numeric(values, dtype, name):

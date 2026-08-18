@@ -29,6 +29,10 @@ bool is_complex_mtype(Index mtype) {
     return mtype == 3 || mtype == 4 || mtype == -4 || mtype == 6 || mtype == 13;
 }
 
+bool is_hermitian_mtype(Index mtype) {
+    return mtype == 4 || mtype == -4;
+}
+
 bool is_supported_mtype(Index mtype) {
     return mtype == 1 || mtype == 2 || mtype == -2 || mtype == 11
         || is_complex_mtype(mtype);
@@ -102,7 +106,14 @@ public:
           factored_(false) {
         if (!is_supported_mtype(mtype)) {
             throw_value_error(
-                "mtype must be one of: 1, 2, -2, 3, 4, -4, 6, 11, 13");
+                "mtype must be one of: 1 (real structurally symmetric), "
+                "2 (real symmetric positive definite), "
+                "-2 (real symmetric indefinite), "
+                "3 (complex structurally symmetric), "
+                "4 (complex Hermitian positive definite), "
+                "-4 (complex Hermitian indefinite), "
+                "6 (complex symmetric), 11 (real nonsymmetric), "
+                "13 (complex nonsymmetric)");
         }
         init_pardiso_state();
     }
@@ -444,19 +455,47 @@ public:
 private:
     template <typename Scalar>
     void set_values_t(py::array a_in, std::vector<Scalar>& storage) {
-        ensure_pattern();
         auto a = py::array_t<Scalar, py::array::c_style | py::array::forcecast>(a_in);
         require_1d(a, "a");
+        ensure_pattern();
 
         if (a.size() != static_cast<py::ssize_t>(storage.size())) {
             throw_value_error("a length must match the current sparsity pattern nnz");
         }
 
+        validate_matrix_values(a);
         auto a_u = a.template unchecked<1>();
         std::copy(a_u.data(0), a_u.data(0) + storage.size(), storage.begin());
 
         values_set_ = true;
         factored_ = false;
+    }
+
+    template <typename Scalar, int Extra>
+    void validate_matrix_values(const py::array_t<Scalar, Extra>& a) const {
+        if constexpr (std::is_same_v<Scalar, Complex>) {
+            if (!is_hermitian_mtype(mtype_)) {
+                return;
+            }
+
+            auto values = a.template unchecked<1>();
+            for (Index row = 0; row < n_; ++row) {
+                const std::size_t start = static_cast<std::size_t>(
+                    ia_[static_cast<std::size_t>(row)]
+                );
+                const std::size_t end = static_cast<std::size_t>(
+                    ia_[static_cast<std::size_t>(row + 1)]
+                );
+                for (std::size_t k = start; k < end; ++k) {
+                    if (ja_[k] == row && values(static_cast<py::ssize_t>(k)).imag() != 0.0) {
+                        std::ostringstream oss;
+                        oss << "Hermitian matrix diagonal entries must be real; row "
+                            << row << " has a nonzero imaginary part";
+                        throw_value_error(oss.str());
+                    }
+                }
+            }
+        }
     }
 
     template <typename Scalar>
@@ -646,7 +685,7 @@ private:
 
         // Many iparm entries affect symbolic analysis (e.g., iparm[1]
         // reordering, iparm[3] preconditioned CGS, iparm[9] pivoting,
-        // iparm[27] single/double precision, iparm[33] CNR mode, etc.).
+        // iparm[33] CNR mode, etc.).
         // Conservatively release the handle on any change to avoid stale
         // analysis results.
         if (analyzed_ && owns_handle()) {

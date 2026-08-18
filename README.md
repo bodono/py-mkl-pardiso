@@ -72,6 +72,10 @@ b = np.array([1.0 + 2.0j, 3.0 - 1.0j])
 x = solver.solve(b)
 ```
 
+Hermitian matrix diagonals must be real. The wrapper validates this whenever
+numeric values are loaded, including during construction, `factor()`, and
+`refactor()`.
+
 ### Refactoring workflow
 
 When the sparsity pattern stays the same but values change (e.g., in an
