@@ -3,6 +3,11 @@
 import numpy as np
 
 from pymklpardiso._mkl_pardiso import (
+    MTYPE_COMPLEX_HERM_INDEF,
+    MTYPE_COMPLEX_HERM_POSDEF,
+    MTYPE_COMPLEX_NONSYM,
+    MTYPE_COMPLEX_STRUCT_SYM,
+    MTYPE_COMPLEX_SYM,
     MTYPE_REAL_NONSYM,
     MTYPE_REAL_STRUCT_SYM,
     MTYPE_REAL_SYM_INDEF,
@@ -10,7 +15,43 @@ from pymklpardiso._mkl_pardiso import (
 )
 from pymklpardiso._mkl_pardiso import PardisoSolver as _PardisoSolver
 
-_SYMMETRIC_MTYPES = (MTYPE_REAL_SYM_POSDEF, MTYPE_REAL_SYM_INDEF)
+_MTYPE_INFO = {
+    MTYPE_REAL_STRUCT_SYM: ("real structurally symmetric", np.float64),
+    MTYPE_REAL_SYM_POSDEF: ("real symmetric positive definite", np.float64),
+    MTYPE_REAL_SYM_INDEF: ("real symmetric indefinite", np.float64),
+    MTYPE_COMPLEX_STRUCT_SYM: ("complex structurally symmetric", np.complex128),
+    MTYPE_COMPLEX_HERM_POSDEF: ("complex Hermitian positive definite", np.complex128),
+    MTYPE_COMPLEX_HERM_INDEF: ("complex Hermitian indefinite", np.complex128),
+    MTYPE_COMPLEX_SYM: ("complex symmetric", np.complex128),
+    MTYPE_REAL_NONSYM: ("real nonsymmetric", np.float64),
+    MTYPE_COMPLEX_NONSYM: ("complex nonsymmetric", np.complex128),
+}
+_SUPPORTED_MTYPE_DESCRIPTIONS = ", ".join(
+    f"{mtype} ({description})"
+    for mtype, (description, _) in _MTYPE_INFO.items()
+)
+_UPPER_TRIANGULAR_MTYPES = frozenset((
+    MTYPE_REAL_SYM_POSDEF,
+    MTYPE_REAL_SYM_INDEF,
+    MTYPE_COMPLEX_HERM_POSDEF,
+    MTYPE_COMPLEX_HERM_INDEF,
+    MTYPE_COMPLEX_SYM,
+))
+
+
+def _dtype_for_mtype(mtype):
+    try:
+        return _MTYPE_INFO[mtype][1]
+    except (KeyError, TypeError):
+        raise ValueError(
+            f"mtype must be one of: {_SUPPORTED_MTYPE_DESCRIPTIONS}"
+        ) from None
+
+
+def _coerce_numeric(values, dtype, name):
+    if dtype is np.float64 and np.iscomplexobj(values):
+        raise ValueError(f"{name} has complex values but the solver mtype is real")
+    return np.asarray(values, dtype=dtype)
 
 
 class PardisoSolver:
@@ -19,10 +60,12 @@ class PardisoSolver:
     Args:
         A: Sparse matrix in CSR format (any object with indptr, indices, data,
             shape attributes, e.g. scipy.sparse.csr_matrix). The matrix must
-            be square. For symmetric types (SPD, symmetric indefinite), pass
-            only the upper triangle in CSR format. For structurally symmetric
-            and nonsymmetric types, pass the full matrix.
-        mtype: Matrix type constant (MTYPE_REAL_SYM_POSDEF, etc.).
+            be square. For symmetric or Hermitian types, pass only the upper
+            triangle in CSR format. For structurally symmetric and
+            nonsymmetric types, pass the full matrix.
+        mtype: Matrix type constant (MTYPE_REAL_SYM_POSDEF,
+            MTYPE_COMPLEX_HERM_POSDEF, etc.). Matrix values and solve buffers
+            use float64 for real types and complex128 for complex types.
         iparms: Optional dict of {index: value} iparm overrides.
         msglvl: Message level (0 = silent, 1 = print statistics).
     """
@@ -34,19 +77,22 @@ class PardisoSolver:
         if n != n_cols:
             raise ValueError("A must be square")
 
+        dtype = _dtype_for_mtype(mtype)
         indptr = np.asarray(A.indptr, dtype=np.int64)
         indices = np.asarray(A.indices, dtype=np.int64)
-        data = np.asarray(A.data, dtype=np.float64)
+        data = _coerce_numeric(A.data, dtype, "A.data")
 
-        if mtype in _SYMMETRIC_MTYPES:
+        if mtype in _UPPER_TRIANGULAR_MTYPES:
             for row in range(n):
                 row_start = indptr[row]
                 row_end = indptr[row + 1]
                 if np.any(indices[row_start:row_end] < row):
                     raise ValueError(
-                        "symmetric matrix types require upper-triangular CSR data only"
+                        "symmetric and Hermitian matrix types require "
+                        "upper-triangular CSR data only"
                     )
 
+        self._dtype = dtype
         self._solver = _PardisoSolver(mtype, msglvl)
         if iparms:
             for idx, val in iparms.items():
@@ -71,7 +117,9 @@ class PardisoSolver:
 
         Values must match the stored sparsity pattern exactly.
         """
-        self._solver.refactor_values(np.asarray(values, dtype=np.float64))
+        self._solver.refactor_values(
+            _coerce_numeric(values, self._dtype, "values")
+        )
 
     def factor(self, values):
         """Re-analyze and re-factorize with new values (phases 11 + 22).
@@ -83,7 +131,7 @@ class PardisoSolver:
 
         Values must match the stored sparsity pattern exactly.
         """
-        self._solver.factor(np.asarray(values, dtype=np.float64))
+        self._solver.factor(_coerce_numeric(values, self._dtype, "values"))
 
     # -- iparm access --
 
@@ -157,6 +205,11 @@ class PardisoSolver:
 
 __all__ = [
     "PardisoSolver",
+    "MTYPE_COMPLEX_STRUCT_SYM",
+    "MTYPE_COMPLEX_HERM_INDEF",
+    "MTYPE_COMPLEX_HERM_POSDEF",
+    "MTYPE_COMPLEX_SYM",
+    "MTYPE_COMPLEX_NONSYM",
     "MTYPE_REAL_STRUCT_SYM",
     "MTYPE_REAL_SYM_INDEF",
     "MTYPE_REAL_SYM_POSDEF",

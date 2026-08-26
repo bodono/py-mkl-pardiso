@@ -644,6 +644,11 @@ class TestPatternValues:
         with pytest.raises(ValueError, match="1D"):
             solver.set_values(np.array([[1.0]]))
 
+    def test_set_values_non_1d_checked_before_pattern(self):
+        solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_POSDEF)
+        with pytest.raises(ValueError, match="1D"):
+            solver.set_values(np.array([[1.0]]))
+
     def test_set_pattern_coerces_int32(self):
         """int32 ia/ja should be coerced to int64."""
         solver = pymklpardiso.PardisoSolver(pymklpardiso.MTYPE_REAL_SYM_POSDEF)
